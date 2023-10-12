@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # go-openpgp-card: A Go Implementation of the OpenPGP Smart Card application
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cunicu/go-openpgp-card/test.yaml?style=flat-square)](https://github.com/cunicu/go-openpgp-card/actions)
@@ -26,6 +31,3 @@ apt-get install \
 ## License
 
 go-openpgp-card is licensed under the [Apache 2.0](./LICENSE) license.
-
-- SPDX-FileCopyrightText: 2023 Steffen Vogel <post@steffenvogel.de>
-- SPDX-License-Identifier: Apache-2.0
