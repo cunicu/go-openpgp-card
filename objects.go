@@ -275,6 +275,7 @@ type ApplicationRelated struct {
 	Keys [4]KeyInfo
 }
 
+//nolint:gocognit
 func (ar *ApplicationRelated) Decode(b []byte) (err error) {
 	tvs, err := tlv.DecodeBER(b)
 	if err != nil {

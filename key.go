@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"math/bits"
 
-	"cunicu.li/go-iso7816"
+	iso "cunicu.li/go-iso7816"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
@@ -134,7 +134,7 @@ func (c *Card) EncryptAES(pt []byte) (ct []byte, err error) {
 		return nil, fmt.Errorf("%w: plaintext length must be multiple of AES block size (16 bytes)", ErrInvalidLength)
 	}
 
-	return send(c.tx, iso7816.InsPerformSecurityOperation, 0x86, 0x80, pt)
+	return send(c.tx, iso.InsPerformSecurityOperation, 0x86, 0x80, pt)
 }
 
 // DecryptAES encrypts a plain text with an AES-key stored in a special DO (D5).
@@ -149,7 +149,7 @@ func (c *Card) DecryptAES(pt []byte) (ct []byte, err error) {
 		return nil, fmt.Errorf("%w: plaintext length must be multiple of AES block size (16 bytes)", ErrInvalidLength)
 	}
 
-	return send(c.tx, iso7816.InsPerformSecurityOperation, 0x86, 0x80, pt)
+	return send(c.tx, iso.InsPerformSecurityOperation, 0x86, 0x80, pt)
 }
 
 func (c *Card) changeAlgAttrs(slot Slot, attrs AlgorithmAttributes) error {
