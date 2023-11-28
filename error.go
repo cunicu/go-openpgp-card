@@ -3,45 +3,62 @@
 
 package openpgp
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
 
-//nolint:gochecknoglobals
-var statusCodes = map[uint16]string{
-	0x6285: "in termination state",
-	0x640E: "out of memory",
-	0x6581: "memory failure",
-	0x6600: "security-related issues",
-	0x6700: "wrong length",
-	0x6881: "logical channel not supported",
-	0x6882: "secure messaging not supported",
-	0x6883: "last command of chain expected",
-	0x6884: "command chaining not supported",
-	0x6982: "security status not satisfied",
-	0x6983: "authentication method blocked",
-	0x6985: "condition of use not satisfied",
-	0x6987: "expected secure messaging data objects missing",
-	0x6988: "secure messaging data objects incorrect",
-	0x6A80: "incorrect parameters in the command",
-	0x6A82: "file not found",
-	0x6A88: "data object not found",
-	0x6B00: "wrong parameters",
-	0x6D00: "instruction code not supported",
-	0x6E00: "class not supported",
-	0x6F00: "no precise diagnosis",
-	0x9000: "command correct",
+	iso "cunicu.li/go-iso7816"
+)
+
+var (
+
+	// errMismatchingAlgorithms is returned when a cryptographic operation
+	// is given keys using different algorithms.
+	errMismatchingAlgorithms = errors.New("mismatching key algorithms")
+	ErrInvalidLength         = errors.New("invalid length")
+	errMissingTag            = errors.New("missing tag")
+	errOutOfMemory           = errors.New("out of memory (basic card)")
+	errSecurity              = errors.New("security related issue")
+	errUnsupported           = errors.New("unsupported")
+	errUnsupportedCurve      = fmt.Errorf("%w curve", errUnsupported)
+	errUnmarshal             = errors.New("failed to unmarshal")
+	errKeyNotPresent         = errors.New("key not present")
+	errAlgAttrsNotChangeable = errors.New("algorithm attributes are not changeable")
+	errChallengeTooLong      = fmt.Errorf("%w: challenge too long", ErrInvalidLength)
+)
+
+// AuthError is an error indicating an authentication error occurred (wrong PIN or blocked).
+type AuthError struct {
+	// Retries is the number of retries remaining if this error resulted from a retry-able
+	// authentication attempt.  If the authentication method is blocked or does not support
+	// retries, this will be 0.
+	Retries int
 }
 
-type Error uint16
-
-func (e Error) Error() string {
-	if e&0x63C0 == 0x63C0 {
-		return fmt.Sprintf("password not checked: %d tries left", e&0xf)
+func (v AuthError) Error() string {
+	r := "retries"
+	if v.Retries == 1 {
+		r = "retry"
 	}
+	return fmt.Sprintf("verification failed (%d %s remaining)", v.Retries, r)
+}
 
-	str, ok := statusCodes[uint16(e)]
+func wrapCode(err error) error {
+	c, ok := err.(iso.Code) //nolint:errorlint
 	if !ok {
-		return "unknown error"
+		return err
 	}
 
-	return str
+	switch {
+	case c == iso.Code{0x64, 0x0E}:
+		return errOutOfMemory
+
+	case c == iso.Code{0x66, 0x00}:
+		return errSecurity
+
+	case c[0] == 0x63 && c[1]&0xf0 == 0xc0:
+		return AuthError{int(c[1] & 0xf)}
+	}
+
+	return err
 }

@@ -4,131 +4,258 @@
 package openpgp
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
+	"reflect"
 	"time"
 
-	iso "cunicu.li/go-skes/internal/iso7816"
-)
-
-var (
-	errInvalidLength   = errors.New("invalid length")
-	errInvalidResponse = errors.New("invalid response")
+	iso "cunicu.li/go-iso7816"
+	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 type KDF struct {
-	Algorithm      byte
-	HashAlgorithm  byte
+	Algorithm      AlgKDF
+	HashAlgorithm  AlgHash
 	Iterations     int
-	SaltRC         []byte
-	SaltPW1        []byte
-	SaltPW3        []byte
+	SaltPW1        [8]byte
+	SaltPW3        [8]byte
+	SaltRC         [8]byte
 	InitialHashPW1 []byte
 	InitialHashPW3 []byte
 }
 
 func (k *KDF) Decode(b []byte) (err error) {
-	var w []byte
-	var t iso.Tag
+	tvs, err := tlv.DecodeBER(b)
+	if err != nil {
+		return err
+	}
 
-	for len(b) > 0 {
-		if t, w, b, err = iso.DecodeTLV(b); err != nil {
-			return errInvalidLength
-		}
-
-		switch t {
+	for _, tv := range tvs {
+		switch tv.Tag {
 		case 0x81:
-			if len(w) != 1 {
-				return errInvalidLength
+			if len(tv.Value) != 1 {
+				return ErrInvalidLength
 			}
 
-			k.Algorithm = w[0]
+			k.Algorithm = AlgKDF(tv.Value[0])
 
 		case 0x82:
-			if len(w) != 1 {
-				return errInvalidLength
+			if len(tv.Value) != 1 {
+				return ErrInvalidLength
 			}
 
-			k.HashAlgorithm = w[0]
+			k.HashAlgorithm = AlgHash(tv.Value[0])
 
 		case 0x83:
-			if len(w) != 4 {
-				return errInvalidLength
+			if len(tv.Value) != 4 {
+				return ErrInvalidLength
 			}
 
-			k.Iterations = int(binary.BigEndian.Uint32(w))
+			k.Iterations = int(binary.BigEndian.Uint32(tv.Value))
 
 		case 0x84:
-			k.SaltPW1 = w
+			if len(tv.Value) != 8 {
+				return ErrInvalidLength
+			}
+
+			k.SaltPW1 = [8]byte(tv.Value)
 
 		case 0x85:
-			k.SaltRC = w
+			if len(tv.Value) != 8 {
+				return ErrInvalidLength
+			}
+
+			k.SaltRC = [8]byte(tv.Value)
 
 		case 0x86:
-			k.SaltPW3 = w
+			if len(tv.Value) != 8 {
+				return ErrInvalidLength
+			}
+
+			k.SaltPW3 = [8]byte(tv.Value)
 
 		case 0x87:
-			k.InitialHashPW1 = w
+			k.InitialHashPW1 = tv.Value
 
 		case 0x88:
-			k.InitialHashPW3 = w
+			k.InitialHashPW3 = tv.Value
 
 		default:
 			slog.Warn("Received unknown tag",
 				slog.String("do", "kdf"),
-				slog.Any("tag", t))
+				slog.Any("tag", tv.Tag),
+				slog.String("value", hex.EncodeToString(tv.Value)))
 		}
 	}
 
 	return nil
 }
 
+func (k *KDF) Encode() ([]byte, error) {
+	parts := []tlv.TagValue{
+		tlv.New(0x81, byte(k.Algorithm)),
+	}
+
+	switch k.Algorithm {
+	case AlgKDFNone:
+
+	case AlgKDFIterSaltedS2K:
+		parts = append(parts,
+			tlv.New(0x82, byte(k.HashAlgorithm)),
+			tlv.New(0x83, uint32(k.Iterations)),
+			tlv.New(0x84, k.SaltPW1[:]),
+			tlv.New(0x85, k.SaltRC[:]),
+			tlv.New(0x86, k.SaltPW3[:]),
+			tlv.New(0x87, k.InitialHashPW1),
+			tlv.New(0x88, k.InitialHashPW3),
+		)
+
+	default:
+		return nil, errUnsupported
+	}
+
+	return tlv.EncodeBER(parts...)
+}
+
 type UserInteractionFlag struct {
-	Requirement byte
-	Feature     byte
+	Mode    UserInteractionMode
+	Feature byte
 }
 
 func (uif *UserInteractionFlag) Decode(b []byte) error {
 	if len(b) != 2 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
-	uif.Requirement = b[0]
+	uif.Mode = UserInteractionMode(b[0])
 	uif.Feature = b[1]
 
 	return nil
 }
 
-type AlgorithmAttributes struct {
-	Algorithm
+type ImportFormat byte
 
-	more []byte
+const (
+	ImportFormatRSAStd ImportFormat = iota
+	ImportFormatRSAStdWithModulus
+	ImportFormatRSACRT
+	ImportFormatRSACRTWithModulus
+
+	ImportFormatECDSAStdWithPublicKey ImportFormat = 0xff
+)
+
+type AlgorithmAttributes struct {
+	Algorithm AlgPubkey
+
+	// Relevant for RSA
+	LengthModulus  uint16
+	LengthExponent uint16
+
+	// Relevant for ECDSA/ECDH
+	OID []byte
+
+	ImportFormat ImportFormat
+}
+
+func (a AlgorithmAttributes) Equal(ab AlgorithmAttributes) bool {
+	return reflect.DeepEqual(a, ab)
 }
 
 func (a *AlgorithmAttributes) Decode(b []byte) error {
 	if len(b) < 1 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
-	a.Algorithm = Algorithm(b[0])
-	a.more = b[1:]
+	a.Algorithm = AlgPubkey(b[0])
+
+	switch a.Algorithm {
+	case AlgPubkeyRSA:
+		if len(b) < 6 {
+			return ErrInvalidLength
+		}
+
+		a.LengthModulus = binary.BigEndian.Uint16(b[1:])
+		a.LengthExponent = binary.BigEndian.Uint16(b[3:])
+		a.ImportFormat = ImportFormat(b[5])
+
+	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
+		a.OID = b[1:]
+
+		// Strip trailing import format byte if present
+		l := len(a.OID)
+		if ImportFormat(a.OID[l-1]) == ImportFormatECDSAStdWithPublicKey {
+			a.ImportFormat = ImportFormatECDSAStdWithPublicKey
+			a.OID = a.OID[:l-1]
+		}
+
+	default:
+		return errUnmarshal
+	}
 
 	return nil
 }
 
-func (a *AlgorithmAttributes) String() string {
-	return "" // TODO
+func (a AlgorithmAttributes) Encode() (b []byte) {
+	b = []byte{byte(a.Algorithm)}
+
+	switch a.Algorithm {
+	case AlgPubkeyRSA:
+		b = binary.BigEndian.AppendUint16(b, a.LengthModulus)
+		b = binary.BigEndian.AppendUint16(b, a.LengthExponent)
+		b = append(b, byte(a.ImportFormat))
+
+	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
+		b = append(b, a.OID...)
+		if a.ImportFormat == ImportFormatECDSAStdWithPublicKey {
+			b = append(b, byte(ImportFormatECDSAStdWithPublicKey))
+		}
+
+	default:
+	}
+
+	return b
+}
+
+func (a AlgorithmAttributes) String() string {
+	switch a.Algorithm {
+	case AlgPubkeyRSAEncOnly, AlgPubkeyRSASignOnly, AlgPubkeyRSA:
+		return fmt.Sprintf("RSA-%d", a.LengthModulus)
+
+	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
+		return a.Curve().String()
+
+	default:
+		return "<unknown>"
+	}
+}
+
+func (a AlgorithmAttributes) Curve() Curve {
+	for curve, oid := range oidByCurve {
+		if bytes.Equal(a.OID, oid) {
+			return curve
+		}
+	}
+
+	return CurveUnknown
 }
 
 type Fingerprint [20]byte
 
+type Status byte
+
+const (
+	StatusKeyNotPresent Status = iota // Not generated or imported
+	StatusKeyGenerated                // On the the card
+	StatusKeyImported                 // Into the card (insecure)
+)
+
 type KeyInfo struct {
 	Reference      byte
-	Status         byte
+	Status         Status
 	AlgAttrs       AlgorithmAttributes
 	Fingerprint    []byte
 	FingerprintCA  []byte
@@ -136,73 +263,9 @@ type KeyInfo struct {
 	UIF            UserInteractionFlag
 }
 
-type HistoricalBytes struct {
-	CategoryIndicator byte
-	StatusIndicator   []byte
-
-	Caps struct {
-		CmdChaining       bool // Command chaining
-		ExtLen            bool // Extended Lc and Le fields
-		ExtLenInfoinEFATR bool // Extended Length Information in EF.ATR/INFO
-		LogicalChanNum    bool
-	}
-
-	CardService struct {
-		AppSelectionFullDF bool // Application Selection by full DF name (AID)
-		AppSelectPartialDF bool // Application Selection by partial DF name
-		EfDirDOsAvailable  bool // DOs available in EF.DIR
-
-		// EF.DIR and EF.ATR/INFO access services
-		// by the GET DATA command (BER-TLV)
-		// Should be set to 010, if Extended Length is
-		// supported
-
-		MF bool // Card with MF
-	}
-}
-
-func (h *HistoricalBytes) Decode(b []byte) (err error) {
-	h.CategoryIndicator = b[0]
-
-	switch h.CategoryIndicator {
-	case 0x10:
-		// Not supported
-
-	case 0x00:
-		lb := len(b)
-		h.StatusIndicator = b[lb-3:]
-		b = b[:lb-3]
-		fallthrough
-
-	case 0x80:
-		var t iso.CompactTag
-		// var v []byte
-
-		for len(b) > 1 {
-			if t, _, b, err = iso.DecodeCompactTLV(b); err != nil {
-				return err
-			}
-
-			switch t {
-			case ctagCaps:
-
-			case ctagCardService:
-			}
-		}
-
-	default:
-		slog.Warn("Received unknown category indicator",
-			slog.String("do", "historical bytes"),
-			slog.Int("category_indicator", int(h.CategoryIndicator)))
-
-	}
-
-	return nil
-}
-
 type ApplicationRelated struct {
 	AID             ApplicationIdentifier
-	HistoricalBytes HistoricalBytes
+	HistoricalBytes iso.HistoricalBytes
 
 	LengthInfo     ExtendedLengthInfo
 	Capabilities   ExtendedCapabilities
@@ -213,157 +276,156 @@ type ApplicationRelated struct {
 }
 
 func (ar *ApplicationRelated) Decode(b []byte) (err error) {
-	var v, w, x []byte
-	var t iso.Tag
-
-	if t, v, _, err = iso.DecodeTLV(b); err != nil {
+	tvs, err := tlv.DecodeBER(b)
+	if err != nil {
 		return err
-	} else if t != tagApplicationRelated || !t.IsConstructed() {
-		return errInvalidResponse
 	}
 
-	for len(v) > 0 {
-		if t, w, v, err = iso.DecodeTLV(v); err != nil {
-			return errInvalidLength
-		}
+	_, tvs, ok := tvs.Get(tagApplicationRelated)
+	if !ok {
+		return errMissingTag
+	}
 
-		switch t {
+	for _, tv := range tvs {
+		switch tv.Tag {
 		case tagAID:
-			if err := ar.AID.Decode(w); err != nil {
+			if err := ar.AID.Decode(tv.Value); err != nil {
 				return fmt.Errorf("failed to decode application identifier: %w", err)
 			}
 
 		case tagHistoricalBytes:
-			if err := ar.HistoricalBytes.Decode(w); err != nil {
+			if err := ar.HistoricalBytes.Decode(tv.Value); err != nil {
 				return fmt.Errorf("failed to decode historical bytes: %w", err)
 			}
 
 		case tagGeneralFeatureManagement:
-			if err := ar.Features.Decode(w); err != nil {
+			if err := ar.Features.Decode(tv.Value); err != nil {
 				return fmt.Errorf("failed to decode general features: %w", err)
 			}
 
 		case tagDiscretionaryDOs:
-			for len(w) > 0 {
-				if t, x, w, err = iso.DecodeTLV(w); err != nil {
-					return errInvalidLength
-				}
-
-				switch t {
-				case tagExtLenInfo:
-					if err := ar.LengthInfo.Decode(x); err != nil {
+			for _, tv := range tv.Children {
+				switch tv.Tag {
+				case tagExtendedLengthInfo:
+					if err := ar.LengthInfo.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode extended length information: %w", err)
 					}
 
-				case tagExtCaps:
-					if err := ar.Capabilities.Decode(x); err != nil {
+				case tagExtendedCapabilities:
+					if err := ar.Capabilities.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode extended capabilities: %w", err)
 					}
 
 				case tagAlgAttrsSign:
-					if err := ar.Keys[SlotSign].AlgAttrs.Decode(x); err != nil {
+					if err := ar.Keys[SlotSign].AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode sign key attrs: %w", err)
 					}
 				case tagAlgAttrsDecrypt:
-					if err := ar.Keys[SlotDecrypt].AlgAttrs.Decode(x); err != nil {
+					if err := ar.Keys[SlotDecrypt].AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode decrypt key attrs: %w", err)
 					}
 				case tagAlgAttrsAuthn:
-					if err := ar.Keys[SlotAuthn].AlgAttrs.Decode(x); err != nil {
+					if err := ar.Keys[SlotAuthn].AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode authentication key attrs: %w", err)
 					}
+
 				case tagAlgAttrsAttest:
-					if err := ar.Keys[SlotAttest].AlgAttrs.Decode(x); err != nil {
+					if err := ar.Keys[SlotAttest].AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode attestation key attrs: %w", err)
 					}
+
 				case tagUIFSign:
-					if err := ar.Keys[SlotSign].UIF.Decode(x); err != nil {
+					if err := ar.Keys[SlotSign].UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
+
 				case tagUIFAuthn:
-					if err := ar.Keys[SlotAuthn].UIF.Decode(x); err != nil {
+					if err := ar.Keys[SlotAuthn].UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagUIFDecrypt:
-					if err := ar.Keys[SlotDecrypt].UIF.Decode(x); err != nil {
+					if err := ar.Keys[SlotDecrypt].UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagUIFAttest:
-					if err := ar.Keys[SlotAttest].UIF.Decode(x); err != nil {
+					if err := ar.Keys[SlotAttest].UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagPasswordStatus:
-					if err := ar.PasswordStatus.Decode(x); err != nil {
+					if err := ar.PasswordStatus.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode password status: %w", err)
 					}
 
-				case tagFP:
-					if len(x) < 60 {
-						return errInvalidLength
+				case tagFpr:
+					if len(tv.Value) < 60 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].Fingerprint = x[0:20]
-					ar.Keys[SlotDecrypt].Fingerprint = x[20:40]
-					ar.Keys[SlotAuthn].Fingerprint = x[40:60]
+					ar.Keys[SlotSign].Fingerprint = tv.Value[0:20]
+					ar.Keys[SlotDecrypt].Fingerprint = tv.Value[20:40]
+					ar.Keys[SlotAuthn].Fingerprint = tv.Value[40:60]
 
-				case tagFPAttest:
-					if len(x) < 20 {
-						return errInvalidLength
+				case tagFprAttest:
+					if len(tv.Value) < 20 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].Fingerprint = x[0:20]
+					ar.Keys[SlotAttest].Fingerprint = tv.Value[0:20]
 
-				case tagCAFP:
-					if len(x) < 60 {
-						return errInvalidLength
+				case tagFprCA:
+					if len(tv.Value) < 60 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].FingerprintCA = x[0:20]
-					ar.Keys[SlotDecrypt].FingerprintCA = x[20:40]
-					ar.Keys[SlotAuthn].FingerprintCA = x[40:60]
-				case tagCAFPAttest:
-					if len(x) < 20 {
-						return errInvalidLength
+					ar.Keys[SlotSign].FingerprintCA = tv.Value[0:20]
+					ar.Keys[SlotDecrypt].FingerprintCA = tv.Value[20:40]
+					ar.Keys[SlotAuthn].FingerprintCA = tv.Value[40:60]
+
+				case tagFprCAAttest:
+					if len(tv.Value) < 20 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].FingerprintCA = x[0:20]
+					ar.Keys[SlotAttest].FingerprintCA = tv.Value[0:20]
 
 				case tagGenTime:
-					if len(x) < 12 {
-						return errInvalidLength
+					if len(tv.Value) < 12 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].GenerationTime = decodeTime(x[0:])
-					ar.Keys[SlotDecrypt].GenerationTime = decodeTime(x[4:])
-					ar.Keys[SlotAuthn].GenerationTime = decodeTime(x[8:])
+					ar.Keys[SlotSign].GenerationTime = decodeTime(tv.Value[0:])
+					ar.Keys[SlotDecrypt].GenerationTime = decodeTime(tv.Value[4:])
+					ar.Keys[SlotAuthn].GenerationTime = decodeTime(tv.Value[8:])
 
 				case tagGenTimeAttest:
-					if len(x) < 4 {
-						return errInvalidLength
+					if len(tv.Value) < 4 {
+						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].GenerationTime = decodeTime(x[0:])
+					ar.Keys[SlotAttest].GenerationTime = decodeTime(tv.Value[0:])
 
 				case tagKeyInfo:
-					for i := 0; i < len(x)/2; i++ {
-						ar.Keys[i].Reference = x[i*2+0]
-						ar.Keys[i].Status = x[i*2+1]
+					for i := 0; i < len(tv.Value)/2; i++ {
+						ar.Keys[i].Reference = tv.Value[i*2+0]
+						ar.Keys[i].Status = Status(tv.Value[i*2+1])
 					}
 
 				default:
 					slog.Warn("Received unknown tag",
 						slog.String("do", "discretionary objects"),
-						slog.Any("tag", t))
+						slog.Any("tag", tv.Tag),
+						slog.String("value", hex.EncodeToString(tv.Value)))
 				}
 			}
 
 		default:
 			slog.Warn("Received unknown tag",
 				slog.String("do", "application related"),
-				slog.Any("tag", t))
+				slog.Any("tag", tv.Tag),
+				slog.String("value", hex.EncodeToString(tv.Value)))
 		}
 	}
 
@@ -384,7 +446,7 @@ type PasswordStatus struct {
 
 func (ps *PasswordStatus) Decode(b []byte) error {
 	if len(b) != 7 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
 	ps.ValidityPW1 = b[0]
@@ -399,37 +461,35 @@ func (ps *PasswordStatus) Decode(b []byte) error {
 }
 
 type ExtendedCapabilities struct {
-	SecureMessaging          bool
-	GetChallenge             bool
-	KeyImport                bool
-	PasswordStatusChangeable bool
-	PrivateDO                bool
-	AlgAttrsChangeable       bool
-	EncDecAES                bool
-	KdfDO                    bool
-	AlgSecureMessaging       byte
-	MaxLenChallenge          uint16
-	MaxLenCardholderCert     uint16
-	MaxLenSpecialDO          uint16
-	Pin2BlockFormat          byte
-	CommandMSE               byte
+	Flags                ExtendedCapabilitiesFlag
+	AlgSM                byte
+	MaxLenChallenge      uint16
+	MaxLenCardholderCert uint16
+	MaxLenSpecialDO      uint16
+	Pin2BlockFormat      byte
+	CommandMSE           byte
 }
+
+type ExtendedCapabilitiesFlag byte
+
+const (
+	CapKDF ExtendedCapabilitiesFlag = (1 << iota)
+	CapAES
+	CapAlgAttrsChangeable
+	CapPrivateDO
+	CapPasswordStatusChangeable
+	CapKeyImport
+	CapGetChallenge
+	CapSecureMessaging
+)
 
 func (ec *ExtendedCapabilities) Decode(b []byte) error {
 	if len(b) != 10 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
-	ec.SecureMessaging = b[0]&(1<<7) != 0
-	ec.GetChallenge = b[0]&(1<<6) != 0
-	ec.KeyImport = b[0]&(1<<5) != 0
-	ec.PasswordStatusChangeable = b[0]&(1<<4) != 0
-	ec.PrivateDO = b[0]&(1<<3) != 0
-	ec.AlgAttrsChangeable = b[0]&(1<<2) != 0
-	ec.EncDecAES = b[0]&(1<<1) != 0
-	ec.KdfDO = b[0]&(1<<0) != 0
-
-	ec.AlgSecureMessaging = b[1]
+	ec.Flags = ExtendedCapabilitiesFlag(b[0])
+	ec.AlgSM = b[1]
 	ec.MaxLenChallenge = binary.BigEndian.Uint16(b[2:])
 	ec.MaxLenCardholderCert = binary.BigEndian.Uint16(b[4:])
 	ec.MaxLenSpecialDO = binary.BigEndian.Uint16(b[6:])
@@ -446,34 +506,32 @@ type Cardholder struct {
 }
 
 func (ch *Cardholder) Decode(b []byte) (err error) {
-	var t iso.Tag
-	var v, w []byte
-
-	if t, v, _, err = iso.DecodeTLV(b); err != nil {
+	tvs, err := tlv.DecodeBER(b)
+	if err != nil {
 		return err
-	} else if t != tagCardholderRelated || !t.IsConstructed() {
-		return errInvalidResponse
 	}
 
-	for len(v) > 0 {
-		if t, w, v, err = iso.DecodeTLV(v); err != nil {
-			return err
-		}
+	_, tvs, ok := tvs.Get(tagCardholderRelated)
+	if !ok {
+		return errMissingTag
+	}
 
-		switch t {
+	for _, tv := range tvs {
+		switch tv.Tag {
 		case tagName:
-			ch.Name = string(w)
+			ch.Name = string(tv.Value)
 		case tagSex:
-			if len(w) < 1 {
-				return errInvalidLength
+			if len(tv.Value) < 1 {
+				return ErrInvalidLength
 			}
-			ch.Sex = Sex(w[0])
+			ch.Sex = Sex(tv.Value[0])
 		case tagLanguage:
-			ch.Language = string(w)
+			ch.Language = string(tv.Value)
 		default:
 			slog.Warn("Received unknown tag",
-				slog.String("do", "application related"),
-				slog.Any("tag", t))
+				slog.String("do", "cardholder related"),
+				slog.Any("tag", tv.Tag),
+				slog.String("value", hex.EncodeToString(tv.Value)))
 		}
 	}
 
@@ -481,104 +539,87 @@ func (ch *Cardholder) Decode(b []byte) (err error) {
 }
 
 type SecuritySupportTemplate struct {
-	SignatureCounter [3]byte
+	SignatureCounter int
 	CardHolderCerts  [3][]byte
 }
 
 func (sst *SecuritySupportTemplate) Decode(b []byte) (err error) {
-	var v, w []byte
-	var t iso.Tag
-
-	if t, v, _, err = iso.DecodeTLV(b); err != nil {
+	tvs, err := tlv.DecodeBER(b)
+	if err != nil {
 		return err
-	} else if t != tagSecuritySupportTemplate || !t.IsConstructed() {
-		return errInvalidResponse
 	}
 
-	for len(v) > 0 {
-		if t, w, v, err = iso.DecodeTLV(v); err != nil {
-			return errInvalidLength
-		}
+	_, tvs, ok := tvs.Get(tagSecuritySupportTemplate)
+	if !ok {
+		return errMissingTag
+	}
 
-		switch t {
+	for _, tv := range tvs {
+		switch tv.Tag {
+		case tagDSCounter:
+			buf := append([]byte{0}, tv.Value...)
+			sst.SignatureCounter = int(binary.BigEndian.Uint32(buf))
 
-		case tagSignatureCounter:
-			for i := 0; i < len(w); i++ {
-				sst.SignatureCounter[i] = w[i]
-			}
-
-		case tagCert:
-			log.Println(hex.EncodeToString(w))
+		case tagCerts:
+			log.Println(hex.EncodeToString(tv.Value))
 
 		default:
 			slog.Warn("Received unknown tag",
-				slog.String("do", "application related"),
-				slog.Any("tag", t))
+				slog.String("do", "security support template"),
+				slog.Any("tag", tv.Tag),
+				slog.String("value", hex.EncodeToString(tv.Value)))
 		}
 	}
 
 	return nil
 }
 
-type GeneralFeatures struct {
-	Display     bool
-	Bio         bool
-	Button      bool
-	KeyPad      bool
-	LED         bool
-	Speaker     bool
-	Mic         bool
-	Touchscreen bool
-}
+type GeneralFeatures byte
 
-func (f *GeneralFeatures) Decode(b []byte) error {
-	if len(b) != 3 {
-		return errInvalidLength
+const (
+	GeneralFeatureTouchscreen byte = (1 << iota)
+	GeneralFeatureMicrophone
+	GeneralFeatureSpeaker
+	GeneralFeatureLED
+	GeneralFeatureKeyPad
+	GeneralFeatureButton
+	GeneralFeatureBiometric
+	GeneralFeatureDisplay
+)
+
+func (gf *GeneralFeatures) Decode(b []byte) error {
+	if len(b) < 1 {
+		return ErrInvalidLength
 	}
 
-	f.Display = b[0]&(1<<7) != 0
-	f.Bio = b[0]&(1<<6) != 0
-	f.Button = b[0]&(1<<5) != 0
-	f.KeyPad = b[0]&(1<<4) != 0
-	f.LED = b[0]&(1<<3) != 0
-	f.Speaker = b[0]&(1<<2) != 0
-	f.Mic = b[0]&(1<<1) != 0
-	f.Touchscreen = b[0]&(1<<0) != 0
+	*gf = GeneralFeatures(b[0])
 
 	return nil
 }
 
 type ApplicationIdentifier struct {
-	RID          RID
+	RID          iso.RID
 	Application  byte
-	Version      [2]byte
+	Version      iso.Version
 	Serial       [4]byte
-	Manufacturer uint16
-	RFU          [2]byte
-	SerialGPG    uint64
+	Manufacturer Manufacturer
 }
 
 func (aid *ApplicationIdentifier) Decode(b []byte) error {
 	if len(b) != 16 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
 	aid.RID = [5]byte(b[0:5])
 	aid.Application = b[5]
-	aid.Version = [2]byte(b[6:8])
-	aid.Manufacturer = binary.BigEndian.Uint16(b[8:10])
+	aid.Version = iso.Version{
+		Major: int(b[6]),
+		Minor: int(b[7]),
+	}
+	aid.Manufacturer = Manufacturer(binary.BigEndian.Uint16(b[8:10]))
 	aid.Serial = [4]byte(b[10:14])
-	aid.RFU = [2]byte(b[14:16])
 
 	return nil
-}
-
-func (aid *ApplicationIdentifier) ManufacturerName() string {
-	if manu, ok := manufacturers[aid.Manufacturer]; ok {
-		return manu
-	}
-
-	return "unknown"
 }
 
 type ExtendedLengthInfo struct {
@@ -588,7 +629,7 @@ type ExtendedLengthInfo struct {
 
 func (li *ExtendedLengthInfo) Decode(b []byte) error {
 	if len(b) != 8 {
-		return errInvalidLength
+		return ErrInvalidLength
 	}
 
 	li.MaxCommandLength = binary.BigEndian.Uint16(b[2:4])

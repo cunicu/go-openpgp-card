@@ -13,7 +13,68 @@ SPDX-License-Identifier: Apache-2.0
 [![Go Reference](https://pkg.go.dev/badge/github.com/cunicu/go-openpgp-card.svg)](https://pkg.go.dev/github.com/cunicu/go-openpgp-card)
 
 `go-openpgp-card` is a Go package providing an interface to the OpenPGP application on ISO Smart Card Operating Systems.
-It implements the [Functional Specification of the OpenPGP application in Version v3.4.1](https://gnupg.org/ftp/specs/OpenPGP-smart-card-application-3.4.1.pdf).
+
+## Features
+
+`go-openpgp-card` implements the [Functional Specification of the OpenPGP application in Version v3.4.1](https://gnupg.org/ftp/specs/OpenPGP-smart-card-application-3.4.1.pdf).
+
+- Supported commands:
+  - [x] 7.2.1 `SELECT`
+  - [x] 7.2.2 `VERIFY`
+  - [x] 7.2.3 `CHANGE REFERENCE DATA`
+  - [x] 7.2.4 `RESET RETRY COUNTER`
+  - [ ] 7.2.5 `SELECT DATA`
+  - [x] 7.2.6 `GET DATA`
+    - [x] Application related
+    - [x] Security Support Template
+    - [x] Private data
+    - [x] Cardholder related
+    - [x] Password status
+    - [x] Login data
+    - [x] Public key URL
+    - [x] Cardholder certificates
+  - [ ] 7.2.7 `GET NEXT DATA`
+  - [x] 7.2.8 `PUT DATA`
+    - [x] Resetting Code
+    - [x] Name
+    - [x] Language
+    - [x] Sex
+    - [x] Public Key URL
+    - [x] Login data
+    - [x] Private data
+    - [ ] Key Import
+      - [ ] RSA
+      - [ ] EC
+  - [x] 7.2.9 `GET RESPONSE`
+  - [ ] 7.2.10 `PSO: COMPUTE DIGITAL SIGNATURE`
+    - [ ] RSA
+    - [ ] ECDSA
+    - [ ] Attestation
+  - [ ] 7.2.11 `PSO: DECIPHER`
+    - [ ] AES
+    - [ ] RSA
+    - [ ] ECDH
+  - [ ] 7.2.12 `PSO: ENCIPHER`
+    - [ ] AES Key
+  - [ ] 7.2.13 `INTERNAL AUTHENTICATE`
+  - [x] 7.2.14 `GENERATE ASYMMETRIC KEY PAIR`
+    - [x] RSA
+    - [x] Elliptic Curves
+  - [x] 7.2.15 `GET CHALLENGE`
+  - [x] 7.2.16 `TERMINATE DF`
+  - [x] 7.2.17 `ACTIVATE FILE`
+  - [x] 7.2.18 `MANAGE SECURITY ENVIRONMENT`
+
+- [x] Key Derivation Function (KDF) for `VERIFY`
+
+### YubiKey extensions
+
+- [x] Set PIN Retry counters
+
+## Tested implementations
+
+- Yubikey
+  - FW version 5.4.3
 
 ## Install
 
