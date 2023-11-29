@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # go-openpgp-card: A Go Implementation of the OpenPGP Smart Card application
 
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cunicu/go-openpgp-card/test.yaml?style=flat-square)](https://github.com/cunicu/go-openpgp-card/actions)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/cunicu/go-openpgp-card/build.yaml?style=flat-square)](https://github.com/cunicu/go-openpgp-card/actions)
 [![goreportcard](https://goreportcard.com/badge/github.com/cunicu/go-openpgp-card?style=flat-square)](https://goreportcard.com/report/github.com/cunicu/go-openpgp-card)
 [![Codecov branch](https://img.shields.io/codecov/c/github/cunicu/go-openpgp-card/main?style=flat-square&token=6XoWouQg6K)](https://app.codecov.io/gh/cunicu/go-openpgp-card/tree/main)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](https://github.com/cunicu/go-openpgp-card/blob/main/LICENSES/Apache-2.0.txt)
