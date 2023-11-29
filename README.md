@@ -23,7 +23,7 @@ SPDX-License-Identifier: Apache-2.0
   - [x] 7.2.2 `VERIFY`
   - [x] 7.2.3 `CHANGE REFERENCE DATA`
   - [x] 7.2.4 `RESET RETRY COUNTER`
-  - [ ] 7.2.5 `SELECT DATA`
+  - [x] 7.2.5 `SELECT DATA`
   - [x] 7.2.6 `GET DATA`
     - [x] Application related
     - [x] Security Support Template
@@ -33,7 +33,8 @@ SPDX-License-Identifier: Apache-2.0
     - [x] Login data
     - [x] Public key URL
     - [x] Cardholder certificates
-  - [ ] 7.2.7 `GET NEXT DATA`
+    - [ ] User interaction flag
+  - [x] 7.2.7 `GET NEXT DATA`
   - [x] 7.2.8 `PUT DATA`
     - [x] Resetting Code
     - [x] Name
@@ -42,6 +43,7 @@ SPDX-License-Identifier: Apache-2.0
     - [x] Public Key URL
     - [x] Login data
     - [x] Private data
+    - [ ] User interaction flag
     - [ ] Key Import
       - [ ] RSA
       - [ ] EC
