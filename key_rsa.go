@@ -11,57 +11,62 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"time"
 
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 var (
-	_ crypto.Signer    = (*rsaPrivateKey)(nil)
-	_ crypto.Decrypter = (*rsaPrivateKey)(nil)
+	_ crypto.Signer    = (*PrivateKeyRSA)(nil)
+	_ crypto.Decrypter = (*PrivateKeyRSA)(nil)
 )
 
 //nolint:unused
 type rsaPublicKey struct {
 	*rsa.PublicKey
 
-	private *rsaPrivateKey
+	private *PrivateKeyRSA
 }
 
-type rsaPrivateKey struct {
-	card   *Card
-	info   KeyInfo
-	slot   Slot
-	public *rsa.PublicKey
+type PrivateKeyRSA struct {
+	card       *Card
+	lenModulus int
+	key        KeyRef
+	public     *rsa.PublicKey
 }
 
-func (k *rsaPrivateKey) Public() crypto.PublicKey {
+func (k *PrivateKeyRSA) Public() crypto.PublicKey {
 	return k.public
 }
 
+func (k *PrivateKeyRSA) Bits() int {
+	return k.lenModulus
+}
+
 // See: OpenPGP Smart Card Application - Section 7.2.10 PSO: COMPUTE DIGITAL SIGNATURE
-func (k *rsaPrivateKey) Sign(_ io.Reader, _ /*digest*/ []byte, _ /*opts*/ crypto.SignerOpts) (signature []byte, err error) {
-	return nil, errUnsupported
+func (k *PrivateKeyRSA) Sign(_ io.Reader, _ /*digest*/ []byte, _ /*opts*/ crypto.SignerOpts) (signature []byte, err error) {
+	return nil, ErrUnsupported
 }
 
 // See: OpenPGP Smart Card Application - Section 7.2.11 PSO: DECIPHER
-func (k *rsaPrivateKey) Decrypt(_ io.Reader, _ /*msg*/ []byte, _ /*opts*/ crypto.DecrypterOpts) (plaintext []byte, err error) {
-	return nil, errUnsupported
+func (k *PrivateKeyRSA) Decrypt(_ io.Reader, _ /*msg*/ []byte, _ /*opts*/ crypto.DecrypterOpts) (plaintext []byte, err error) {
+	return nil, ErrUnsupported
 }
 
-func (k rsaPrivateKey) Fingerprint() []byte {
+func (k PrivateKeyRSA) fingerprint(creationTime time.Time) []byte {
 	buf := []byte{
 		0x99, // Prefix
 		0, 0, // Packet length
 		0x04,       // Version
 		0, 0, 0, 0, // Creation timestamp
-		byte(k.info.AlgAttrs.Algorithm),
+		byte(AlgPubkeyRSA),
 	}
 
 	buf = appendMPI(buf, k.public.N)
 	buf = appendMPI(buf, big.NewInt(int64(k.public.E)))
 
-	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))                   // Fill in packet length
-	binary.BigEndian.PutUint32(buf[4:], uint32(k.info.GenerationTime.Unix())) // Fill in creation timestamp
+	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))          // Fill in packet length
+	binary.BigEndian.PutUint32(buf[4:], uint32(creationTime.Unix())) // Fill in creation timestamp
 
 	digest := sha1.New() // nolint:gosec
 	digest.Write(buf)
@@ -69,7 +74,7 @@ func (k rsaPrivateKey) Fingerprint() []byte {
 	return digest.Sum(nil)
 }
 
-func decodeRSAPublic(tvs tlv.TagValues) (*rsa.PublicKey, error) {
+func decodePublicRSA(tvs tlv.TagValues) (*rsa.PublicKey, error) {
 	_, tvs, ok := tvs.Get(tagPublicKey)
 	if !ok {
 		return nil, fmt.Errorf("%w: public key", errMissingTag)

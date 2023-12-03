@@ -17,9 +17,9 @@ import (
 
 var (
 	errIterationsTooSmall                       = errors.New("iterations too small")
-	errUnsupportedKDFAlg                        = fmt.Errorf("%w algorithm", errUnsupported)
-	errUnsupportedKDFHashAlg                    = fmt.Errorf("%w hash algorithm", errUnsupported)
-	errUnsupportedPasswordLengthsTooShortForKDF = fmt.Errorf("%w: password lengths are too small for KDF", errUnsupported)
+	errUnsupportedKDFAlg                        = fmt.Errorf("%w algorithm", ErrUnsupported)
+	errUnsupportedKDFHashAlg                    = fmt.Errorf("%w hash algorithm", ErrUnsupported)
+	errUnsupportedPasswordLengthsTooShortForKDF = fmt.Errorf("%w: password lengths are too small for KDF", ErrUnsupported)
 	errMissingKDFSalt                           = errors.New("missing salt")
 )
 
@@ -48,7 +48,7 @@ func (c *Card) GetKDF() (k *KDF, err error) {
 func (c *Card) SetupKDF(alg AlgKDF, iterations int, pw1, pw3 string) (err error) {
 	// Check if KDF is supported
 	if c.Capabilities.Flags&CapKDF == 0 {
-		return fmt.Errorf("key derived passwords are %w", errUnsupported)
+		return fmt.Errorf("key derived passwords are %w", ErrUnsupported)
 	}
 
 	if min(c.PasswordStatus.LengthPW1, c.PasswordStatus.LengthRC, c.PasswordStatus.LengthPW3) < 64 {
@@ -84,7 +84,7 @@ func (c *Card) SetupKDF(alg AlgKDF, iterations int, pw1, pw3 string) (err error)
 		}
 
 	default:
-		return errUnsupported
+		return ErrUnsupported
 	}
 
 	if kdf.InitialHashPW1, err = kdf.DerivePassword(PW1, DefaultPW1); err != nil {

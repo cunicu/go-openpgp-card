@@ -5,6 +5,9 @@
 package openpgp
 
 import (
+	"crypto/ecdh"
+	"crypto/elliptic"
+
 	iso "cunicu.li/go-iso7816"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
@@ -128,87 +131,94 @@ func (s Sex) String() string {
 	return ""
 }
 
-type Slot byte
+type KeyRef byte
 
 const (
-	SlotSign Slot = iota
-	SlotDecrypt
-	SlotAuthn
-	SlotAttest
+	KeySign    KeyRef = 0x01
+	KeyDecrypt KeyRef = 0x02
+	KeyAuthn   KeyRef = 0x03
+	KeyAttest  KeyRef = 0x81
 )
 
-func (s Slot) String() string {
-	switch s {
-	case SlotSign:
+func (r KeyRef) String() string {
+	switch r {
+	case KeySign:
 		return "sign"
-	case SlotDecrypt:
+	case KeyDecrypt:
 		return "decrypt"
-	case SlotAuthn:
+	case KeyAuthn:
 		return "authenticate"
-	case SlotAttest:
+	case KeyAttest:
 		return "attest"
 	default:
 		return unknown
 	}
 }
 
-func (s Slot) tagAlgAttrs() tlv.Tag {
-	switch s {
-	case SlotSign:
+func (r KeyRef) tagAlgAttrs() tlv.Tag {
+	switch r {
+	case KeySign:
 		return tagAlgAttrsSign
-	case SlotDecrypt:
+	case KeyDecrypt:
 		return tagAlgAttrsDecrypt
-	case SlotAuthn:
+	case KeyAuthn:
 		return tagAlgAttrsAuthn
-	case SlotAttest:
+	case KeyAttest:
 		return tagAlgAttrsAttest
 	default:
 		return 0
 	}
 }
 
-func (s Slot) tagGenTime() tlv.Tag {
-	switch s {
-	case SlotSign:
+func (r KeyRef) tagGenTime() tlv.Tag {
+	switch r {
+	case KeySign:
 		return tagGenTimeSign
-	case SlotDecrypt:
+	case KeyDecrypt:
 		return tagGenTimeDecrypt
-	case SlotAuthn:
+	case KeyAuthn:
 		return tagGenTimeAuthn
-	case SlotAttest:
+	case KeyAttest:
 		return tagGenTimeAttest
 	default:
 		return 0
 	}
 }
 
-func (s Slot) tagFpr() tlv.Tag {
-	switch s {
-	case SlotSign:
+func (r KeyRef) tagFpr() tlv.Tag {
+	switch r {
+	case KeySign:
 		return tagFprSign
-	case SlotDecrypt:
+	case KeyDecrypt:
 		return tagFprDecrypt
-	case SlotAuthn:
+	case KeyAuthn:
 		return tagFprAuthn
-	case SlotAttest:
+	case KeyAttest:
 		return tagFprAttest
 	default:
 		return 0
 	}
 }
 
-// crt returns the 7.2.14 GENERATE ASYMMETRIC KEY PAIR of the respective slot
+// crt returns the control reference template
 // See: OpenPGP Smart Card Application - Section 7.2.14 GENERATE ASYMMETRIC KEY PAIR
-func (s Slot) crt() []byte {
-	switch s {
-	case SlotSign:
-		return []byte{0xB6, 0x03, 0x84, 0x01, 0x01}
-	case SlotDecrypt:
-		return []byte{0xB8, 0x03, 0x84, 0x01, 0x02}
-	case SlotAuthn:
-		return []byte{0xA4, 0x03, 0x84, 0x01, 0x03}
+func (r KeyRef) crt() tlv.TagValue {
+	return tlv.TagValue{
+		Tag:   r.tag(),
+		Value: []byte{0x84, 0x01, byte(r)},
+	}
+}
+
+func (r KeyRef) tag() tlv.Tag {
+	switch r {
+	case KeySign, KeyAttest:
+		return tlv.Tag(0xB6)
+	case KeyDecrypt:
+		return tlv.Tag(0xB8)
+	case KeyAuthn:
+		return tlv.Tag(0xA4)
 	default:
-		return nil
+		return 0
 	}
 }
 
@@ -237,6 +247,7 @@ const (
 	SecurityOperationSign         SecurityOperation = iota
 	SecurityOperationAuthenticate                   // Authentication
 	SecurityOperationDecrypt                        // Confidentiality
+	SecurityOperationAttest
 )
 
 type Curve byte
@@ -290,6 +301,104 @@ func (c Curve) String() string {
 	}
 }
 
+func (c Curve) ECDH() ecdh.Curve {
+	switch c {
+	case CurveANSIx9p256r1:
+		return ecdh.P256()
+	case CurveANSIx9p384r1:
+		return ecdh.P384()
+	case CurveANSIx9p521r1:
+		return ecdh.P521()
+	case CurveX25519:
+		return ecdh.X25519()
+	default:
+		return nil // TODO: panic here?
+	}
+}
+
+func (c Curve) ECDSA() elliptic.Curve {
+	switch c {
+	case CurveANSIx9p256r1:
+		return elliptic.P256()
+	case CurveANSIx9p384r1:
+		return elliptic.P384()
+	case CurveANSIx9p521r1:
+		return elliptic.P521()
+	default:
+		return nil // TODO: panic here?
+	}
+}
+
+func (c Curve) OID() []byte {
+	switch c {
+	case CurveANSIx9p256r1:
+		return oidANSIx9p256r1
+	case CurveANSIx9p384r1:
+		return oidANSIx9p384r1
+	case CurveANSIx9p521r1:
+		return oidANSIx9p521r1
+
+	case CurveBrainpoolP256r1:
+		return oidBrainpoolP256r1
+	case CurveBrainpoolP384r1:
+		return oidBrainpoolP384r1
+	case CurveBrainpoolP512r1:
+		return oidBrainpoolP512r1
+
+	case CurveSecp256k1:
+		return oidSecp256k1
+
+	case CurveX448:
+		return oidX448
+	case CurveX25519:
+		return oidX25519
+
+	case CurveEd448:
+		return oidEd448
+	case CurveEd25519:
+		return oidEd25519
+
+	case CurveUnknown:
+		return nil // TODO: panic here?
+	}
+
+	return nil
+}
+
+func (c Curve) AlgAttrs() AlgorithmAttributes {
+	return AlgorithmAttributes{
+		OID: c.OID(),
+	}
+}
+
+func curveFromECDSA(c elliptic.Curve) Curve {
+	switch c {
+	case elliptic.P256():
+		return CurveANSIx9p256r1
+	case elliptic.P384():
+		return CurveANSIx9p384r1
+	case elliptic.P521():
+		return CurveANSIx9p521r1
+	}
+
+	return CurveUnknown
+}
+
+func curveFromECDH(c ecdh.Curve) Curve {
+	switch c {
+	case ecdh.P256():
+		return CurveANSIx9p256r1
+	case ecdh.P384():
+		return CurveANSIx9p384r1
+	case ecdh.P521():
+		return CurveANSIx9p521r1
+	case ecdh.X25519():
+		return CurveX25519
+	}
+
+	return CurveUnknown
+}
+
 type oid []byte
 
 var (
@@ -308,26 +417,13 @@ var (
 
 	oidEd25519 = []byte{0x2B, 0x06, 0x01, 0x04, 0x01, 0xDA, 0x47, 0x0F, 0x01}
 	oidEd448   = []byte{0x2B, 0x65, 0x71}
-
-	oidByCurve = map[Curve]oid{
-		CurveANSIx9p256r1:    oidANSIx9p256r1,
-		CurveANSIx9p384r1:    oidANSIx9p384r1,
-		CurveANSIx9p521r1:    oidANSIx9p521r1,
-		CurveBrainpoolP256r1: oidBrainpoolP256r1,
-		CurveBrainpoolP384r1: oidBrainpoolP384r1,
-		CurveBrainpoolP512r1: oidBrainpoolP512r1,
-		CurveX25519:          oidX25519,
-		CurveX448:            oidX448,
-		CurveEd25519:         oidEd25519,
-		CurveEd448:           oidEd448,
-		CurveSecp256k1:       oidSecp256k1,
-	}
 )
 
 const (
-	PW1 byte = 0x81 // User PIN (PSO:CDS command only)
-	RC  byte = 0x82 // Resetting code
-	PW3 byte = 0x83 // Admin PIN
+	PW1       byte = 0x81 // User PIN (PSO:CDS command only)
+	PW1forPSO byte = 0x82 // User PIN for PSO: DECIPHER
+	RC        byte = 0x82 // Resetting code
+	PW3       byte = 0x83 // Admin PIN
 )
 
 var (
@@ -518,7 +614,7 @@ const (
 
 	tagExtendedHeaderList tlv.Tag = 0x4d // For key import including the following sub-tags
 	tagPrivateKeyTemplate tlv.Tag = 0x7f48
-	tagPrivateKey         tlv.Tag = 0x4f48
+	tagPrivateKey         tlv.Tag = 0x5f48
 
 	// Constructed DOs
 
