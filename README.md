@@ -65,6 +65,7 @@ SPDX-License-Identifier: Apache-2.0
   - [ ] 7.2.13 `INTERNAL AUTHENTICATE`
     - [ ] RSA
     - [ ] ECDSA
+    - [ ] EdDSA
   - [x] 7.2.14 `GENERATE ASYMMETRIC KEY PAIR`
     - [x] RSA
     - [x] Elliptic Curves
@@ -74,12 +75,12 @@ SPDX-License-Identifier: Apache-2.0
   - [x] 7.2.18 `MANAGE SECURITY ENVIRONMENT`
 
 - [x] Key Derivation Function (KDF) for `VERIFY`
-- [ ] Attestation
 - [ ] PIN Handler / Callback
 
 ### YubiKey extensions
 
 - [x] Set PIN Retry counters
+- [ ] Attestation
 
 ## Tested implementations
 
@@ -88,7 +89,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Install
 
-When build with `CGO_ENABLED`, go-openpgp-card requires the following external dependencies.
+go-openpgp-card needs to be build with `CGO_ENABLED=1` and requires the following external dependencies:
 
 ```bash
 apt-get install \
