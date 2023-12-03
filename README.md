@@ -45,6 +45,7 @@ SPDX-License-Identifier: Apache-2.0
     - [x] Private data
     - [ ] User interaction flag
     - [ ] Key Import
+      - [x] AES
       - [ ] RSA
       - [ ] EC
   - [x] 7.2.9 `GET RESPONSE`
@@ -53,11 +54,11 @@ SPDX-License-Identifier: Apache-2.0
     - [ ] ECDSA
     - [ ] Attestation
   - [ ] 7.2.11 `PSO: DECIPHER`
-    - [ ] AES
+    - [x] AES
     - [ ] RSA
     - [ ] ECDH
   - [ ] 7.2.12 `PSO: ENCIPHER`
-    - [ ] AES Key
+    - [x] AES
   - [ ] 7.2.13 `INTERNAL AUTHENTICATE`
   - [x] 7.2.14 `GENERATE ASYMMETRIC KEY PAIR`
     - [x] RSA

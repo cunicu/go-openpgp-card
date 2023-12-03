@@ -122,34 +122,65 @@ func (c *Card) SupportedAlgorithms() (map[Slot][]AlgorithmAttributes, error) {
 	return algs, nil
 }
 
-// EncryptAES encrypts a plain text with an AES-key stored in a special DO (D5).
-//
-// See: OpenPGP Smart Card Application - Section 7.2.12 PSO: ENCIPHER
-func (c *Card) EncryptAES(pt []byte) (ct []byte, err error) {
-	if c.Capabilities.Flags&CapAES == 0 {
-		return nil, errUnsupported
-	}
-
-	if n := len(pt) % 16; n != 0 {
-		return nil, fmt.Errorf("%w: plaintext length must be multiple of AES block size (16 bytes)", ErrInvalidLength)
-	}
-
-	return send(c.tx, iso.InsPerformSecurityOperation, 0x86, 0x80, pt)
+// BlockCipher returns a block cipher object for symmetric AES de/encipherment.
+func (c *Card) BlockCipher() *BlockCipher {
+	return &BlockCipher{c}
 }
 
-// DecryptAES encrypts a plain text with an AES-key stored in a special DO (D5).
-//
-// See: OpenPGP Smart Card Application - Section 7.2.12 PSO: ENCIPHER
-func (c *Card) DecryptAES(pt []byte) (ct []byte, err error) {
+// ImportKeyAES stores an AES key for symmetric encryption on the card.
+// The Key length must be 16 or 32 Byte for AES128 and AES256 respectively.
+// For encryption and decryption, use the block cipher object returned by [Card.BlockCipher].
+func (c *Card) ImportKeyAES(key []byte) error {
 	if c.Capabilities.Flags&CapAES == 0 {
-		return nil, errUnsupported
+		return fmt.Errorf("%w: AES en/decryption is not supported", ErrUnsupported)
 	}
 
-	if n := len(pt) % 16; n != 0 {
-		return nil, fmt.Errorf("%w: plaintext length must be multiple of AES block size (16 bytes)", ErrInvalidLength)
+	if len(key) != 16 && len(key) != 32 {
+		return fmt.Errorf("%w: AES key length must be either 16 or 32 Bytes", ErrInvalidLength)
 	}
 
-	return send(c.tx, iso.InsPerformSecurityOperation, 0x86, 0x80, pt)
+	return c.putData(tagKeyAES, key)
+}
+
+func (c *Card) algorithmAttributesFromPrivateKey(sk crypto.PrivateKey) (aa AlgorithmAttributes, err error) {
+	switch sk := sk.(type) {
+	case *rsa.PrivateKey:
+		aa.LengthModulus = sk.N.BitLen()
+
+	case *ecdsa.PrivateKey:
+		aa.OID = curveFromECDSA(sk.Curve).OID()
+
+	case *ecdh.PrivateKey:
+		aa.OID = curveFromECDH(sk.Curve()).OID()
+
+	case ed25519.PrivateKey:
+		aa.OID = CurveEd25519.OID()
+
+	default:
+		return aa, ErrUnsupportedKeyAttrs
+	}
+
+	return aa, nil
+}
+
+func (c *Card) findCompatibleAlgorithmAttributes(key KeyRef, attrs AlgorithmAttributes) (aa AlgorithmAttributes, err error) {
+	asByKey, err := c.SupportedAlgorithms()
+	if err != nil {
+		return aa, fmt.Errorf("failed to get supported algorithm attributes: %w", err)
+	}
+
+	as, ok := asByKey[key]
+	if !ok {
+		return aa, ErrUnsupportedKeyAttrs
+	}
+
+	for _, a := range as {
+		if a.Compatible(attrs) {
+			return a, nil
+		}
+	}
+
+	return aa, ErrUnsupportedKeyAttrs
 }
 
 func (c *Card) changeAlgAttrs(slot Slot, attrs AlgorithmAttributes) error {
