@@ -43,23 +43,28 @@ SPDX-License-Identifier: Apache-2.0
     - [x] Public Key URL
     - [x] Login data
     - [x] Private data
-    - [ ] User interaction flag
+    - [x] User interaction flag
+    - [x] Password status
     - [ ] Key Import
       - [x] AES
-      - [ ] RSA
-      - [ ] EC
+      - [x] RSA
+      - [x] ECDSA
+      - [x] EdDSA
   - [x] 7.2.9 `GET RESPONSE`
   - [ ] 7.2.10 `PSO: COMPUTE DIGITAL SIGNATURE`
     - [ ] RSA
-    - [ ] ECDSA
-    - [ ] Attestation
+    - [x] ECDSA
+    - [x] EdDSA
   - [ ] 7.2.11 `PSO: DECIPHER`
     - [x] AES
     - [ ] RSA
-    - [ ] ECDH
+    - [x] ECDH
+    - [x] EdDSA
   - [ ] 7.2.12 `PSO: ENCIPHER`
     - [x] AES
   - [ ] 7.2.13 `INTERNAL AUTHENTICATE`
+    - [ ] RSA
+    - [ ] ECDSA
   - [x] 7.2.14 `GENERATE ASYMMETRIC KEY PAIR`
     - [x] RSA
     - [x] Elliptic Curves
@@ -69,6 +74,8 @@ SPDX-License-Identifier: Apache-2.0
   - [x] 7.2.18 `MANAGE SECURITY ENVIRONMENT`
 
 - [x] Key Derivation Function (KDF) for `VERIFY`
+- [ ] Attestation
+- [ ] PIN Handler / Callback
 
 ### YubiKey extensions
 

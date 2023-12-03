@@ -207,7 +207,7 @@ func TestSignatureCounter(t *testing.T) {
 	})
 }
 
-func TestGetCardholderCertificates(t *testing.T) {
+func TestCardholderCertificates(t *testing.T) {
 	withCard(t, false, func(t *testing.T, c *pgp.Card) {
 		require := require.New(t)
 
@@ -218,13 +218,13 @@ func TestGetCardholderCertificates(t *testing.T) {
 	})
 }
 
-func TestGetCardholderCertificate(t *testing.T) {
-	for _, slot := range []pgp.Slot{pgp.SlotAuthn, pgp.SlotDecrypt, pgp.SlotSign} {
-		t.Run(slot.String(), func(t *testing.T) {
+func TestCardholderCertificate(t *testing.T) {
+	for _, key := range []pgp.KeyRef{pgp.KeyAuthn, pgp.KeyDecrypt, pgp.KeySign} {
+		t.Run(key.String(), func(t *testing.T) {
 			withCard(t, false, func(t *testing.T, c *pgp.Card) {
 				require := require.New(t)
 
-				chCert, err := c.GetCardholderCertificate(slot)
+				chCert, err := c.GetCardholderCertificate(key)
 				require.NoError(err)
 
 				t.Log(spew.Sdump(chCert))

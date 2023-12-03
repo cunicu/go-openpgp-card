@@ -4,19 +4,18 @@
 package openpgp
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"log/slog"
-	"reflect"
 	"time"
 
 	iso "cunicu.li/go-iso7816"
 	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
+// KDF contains the Parameters for the Key Derivation Function (KDF).
 type KDF struct {
 	Algorithm      AlgKDF
 	HashAlgorithm  AlgHash
@@ -115,26 +114,31 @@ func (k *KDF) Encode() ([]byte, error) {
 		)
 
 	default:
-		return nil, errUnsupported
+		return nil, ErrUnsupported
 	}
 
 	return tlv.EncodeBER(parts...)
 }
 
-type UserInteractionFlag struct {
+// UIF configures the required user interaction for certain security operations.
+type UIF struct {
 	Mode    UserInteractionMode
-	Feature byte
+	Feature GeneralFeatures
 }
 
-func (uif *UserInteractionFlag) Decode(b []byte) error {
+func (uif *UIF) Decode(b []byte) error {
 	if len(b) != 2 {
 		return ErrInvalidLength
 	}
 
 	uif.Mode = UserInteractionMode(b[0])
-	uif.Feature = b[1]
+	uif.Feature = GeneralFeatures(b[1])
 
 	return nil
+}
+
+func (uif UIF) Encode() []byte {
+	return []byte{byte(uif.Mode), byte(uif.Feature)}
 }
 
 type ImportFormat byte
@@ -148,123 +152,28 @@ const (
 	ImportFormatECDSAStdWithPublicKey ImportFormat = 0xff
 )
 
-type AlgorithmAttributes struct {
-	Algorithm AlgPubkey
-
-	// Relevant for RSA
-	LengthModulus  uint16
-	LengthExponent uint16
-
-	// Relevant for ECDSA/ECDH
-	OID []byte
-
-	ImportFormat ImportFormat
-}
-
-func (a AlgorithmAttributes) Equal(ab AlgorithmAttributes) bool {
-	return reflect.DeepEqual(a, ab)
-}
-
-func (a *AlgorithmAttributes) Decode(b []byte) error {
-	if len(b) < 1 {
-		return ErrInvalidLength
-	}
-
-	a.Algorithm = AlgPubkey(b[0])
-
-	switch a.Algorithm {
-	case AlgPubkeyRSA:
-		if len(b) < 6 {
-			return ErrInvalidLength
-		}
-
-		a.LengthModulus = binary.BigEndian.Uint16(b[1:])
-		a.LengthExponent = binary.BigEndian.Uint16(b[3:])
-		a.ImportFormat = ImportFormat(b[5])
-
-	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
-		a.OID = b[1:]
-
-		// Strip trailing import format byte if present
-		l := len(a.OID)
-		if ImportFormat(a.OID[l-1]) == ImportFormatECDSAStdWithPublicKey {
-			a.ImportFormat = ImportFormatECDSAStdWithPublicKey
-			a.OID = a.OID[:l-1]
-		}
-
-	default:
-		return errUnmarshal
-	}
-
-	return nil
-}
-
-func (a AlgorithmAttributes) Encode() (b []byte) {
-	b = []byte{byte(a.Algorithm)}
-
-	switch a.Algorithm {
-	case AlgPubkeyRSA:
-		b = binary.BigEndian.AppendUint16(b, a.LengthModulus)
-		b = binary.BigEndian.AppendUint16(b, a.LengthExponent)
-		b = append(b, byte(a.ImportFormat))
-
-	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
-		b = append(b, a.OID...)
-		if a.ImportFormat == ImportFormatECDSAStdWithPublicKey {
-			b = append(b, byte(ImportFormatECDSAStdWithPublicKey))
-		}
-
-	default:
-	}
-
-	return b
-}
-
-func (a AlgorithmAttributes) String() string {
-	switch a.Algorithm {
-	case AlgPubkeyRSAEncOnly, AlgPubkeyRSASignOnly, AlgPubkeyRSA:
-		return fmt.Sprintf("RSA-%d", a.LengthModulus)
-
-	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:
-		return a.Curve().String()
-
-	default:
-		return "<unknown>"
-	}
-}
-
-func (a AlgorithmAttributes) Curve() Curve {
-	for curve, oid := range oidByCurve {
-		if bytes.Equal(a.OID, oid) {
-			return curve
-		}
-	}
-
-	return CurveUnknown
-}
-
 type Fingerprint [20]byte
 
-type Status byte
+type KeyStatus byte
 
 const (
-	StatusKeyNotPresent Status = iota // Not generated or imported
-	StatusKeyGenerated                // On the the card
-	StatusKeyImported                 // Into the card (insecure)
+	KeyNotPresent KeyStatus = iota // Not generated or imported
+	KeyGenerated                   // On the the card
+	KeyImported                    // Into the card (insecure)
 )
 
 type KeyInfo struct {
-	Reference      byte
-	Status         Status
+	Reference      KeyRef
+	Status         KeyStatus
 	AlgAttrs       AlgorithmAttributes
 	Fingerprint    []byte
 	FingerprintCA  []byte
 	GenerationTime time.Time
-	UIF            UserInteractionFlag
+	UIF            UIF
 }
 
 type ApplicationRelated struct {
-	AID             ApplicationIdentifier
+	AID             AID
 	HistoricalBytes iso.HistoricalBytes
 
 	LengthInfo     ExtendedLengthInfo
@@ -272,7 +181,7 @@ type ApplicationRelated struct {
 	Features       GeneralFeatures
 	PasswordStatus PasswordStatus
 
-	Keys [4]KeyInfo
+	Keys map[KeyRef]KeyInfo
 }
 
 //nolint:gocognit
@@ -305,6 +214,8 @@ func (ar *ApplicationRelated) Decode(b []byte) (err error) {
 			}
 
 		case tagDiscretionaryDOs:
+			var keySign, keyDecrypt, keyAuthn, keyAttest KeyInfo
+
 			for _, tv := range tv.Children {
 				switch tv.Tag {
 				case tagExtendedLengthInfo:
@@ -318,40 +229,42 @@ func (ar *ApplicationRelated) Decode(b []byte) (err error) {
 					}
 
 				case tagAlgAttrsSign:
-					if err := ar.Keys[SlotSign].AlgAttrs.Decode(tv.Value); err != nil {
+					if err := keySign.AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode sign key attrs: %w", err)
 					}
+
 				case tagAlgAttrsDecrypt:
-					if err := ar.Keys[SlotDecrypt].AlgAttrs.Decode(tv.Value); err != nil {
+					if err := keyDecrypt.AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode decrypt key attrs: %w", err)
 					}
+
 				case tagAlgAttrsAuthn:
-					if err := ar.Keys[SlotAuthn].AlgAttrs.Decode(tv.Value); err != nil {
+					if err := keyAuthn.AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode authentication key attrs: %w", err)
 					}
 
 				case tagAlgAttrsAttest:
-					if err := ar.Keys[SlotAttest].AlgAttrs.Decode(tv.Value); err != nil {
+					if err := keyAttest.AlgAttrs.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode attestation key attrs: %w", err)
 					}
 
 				case tagUIFSign:
-					if err := ar.Keys[SlotSign].UIF.Decode(tv.Value); err != nil {
+					if err := keySign.UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagUIFAuthn:
-					if err := ar.Keys[SlotAuthn].UIF.Decode(tv.Value); err != nil {
+					if err := keyAuthn.UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagUIFDecrypt:
-					if err := ar.Keys[SlotDecrypt].UIF.Decode(tv.Value); err != nil {
+					if err := keyDecrypt.UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
 				case tagUIFAttest:
-					if err := ar.Keys[SlotAttest].UIF.Decode(tv.Value); err != nil {
+					if err := keyAttest.UIF.Decode(tv.Value); err != nil {
 						return fmt.Errorf("failed to decode user interaction flag: %w", err)
 					}
 
@@ -365,53 +278,60 @@ func (ar *ApplicationRelated) Decode(b []byte) (err error) {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].Fingerprint = tv.Value[0:20]
-					ar.Keys[SlotDecrypt].Fingerprint = tv.Value[20:40]
-					ar.Keys[SlotAuthn].Fingerprint = tv.Value[40:60]
+					keySign.Fingerprint = tv.Value[0:20]
+					keyDecrypt.Fingerprint = tv.Value[20:40]
+					keyAuthn.Fingerprint = tv.Value[40:60]
 
 				case tagFprAttest:
 					if len(tv.Value) < 20 {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].Fingerprint = tv.Value[0:20]
+					keyAttest.Fingerprint = tv.Value[0:20]
 
 				case tagFprCA:
 					if len(tv.Value) < 60 {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].FingerprintCA = tv.Value[0:20]
-					ar.Keys[SlotDecrypt].FingerprintCA = tv.Value[20:40]
-					ar.Keys[SlotAuthn].FingerprintCA = tv.Value[40:60]
+					keySign.FingerprintCA = tv.Value[0:20]
+					keyDecrypt.FingerprintCA = tv.Value[20:40]
+					keyAuthn.FingerprintCA = tv.Value[40:60]
 
 				case tagFprCAAttest:
 					if len(tv.Value) < 20 {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].FingerprintCA = tv.Value[0:20]
+					keyAttest.FingerprintCA = tv.Value[0:20]
 
 				case tagGenTime:
 					if len(tv.Value) < 12 {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotSign].GenerationTime = decodeTime(tv.Value[0:])
-					ar.Keys[SlotDecrypt].GenerationTime = decodeTime(tv.Value[4:])
-					ar.Keys[SlotAuthn].GenerationTime = decodeTime(tv.Value[8:])
+					keySign.GenerationTime = decodeTime(tv.Value[0:])
+					keyDecrypt.GenerationTime = decodeTime(tv.Value[4:])
+					keyAuthn.GenerationTime = decodeTime(tv.Value[8:])
 
 				case tagGenTimeAttest:
 					if len(tv.Value) < 4 {
 						return ErrInvalidLength
 					}
 
-					ar.Keys[SlotAttest].GenerationTime = decodeTime(tv.Value[0:])
+					keyAttest.GenerationTime = decodeTime(tv.Value[0:])
 
 				case tagKeyInfo:
-					for i := 0; i < len(tv.Value)/2; i++ {
-						ar.Keys[i].Reference = tv.Value[i*2+0]
-						ar.Keys[i].Status = Status(tv.Value[i*2+1])
+					keySign.Reference = KeyRef(tv.Value[0])
+					keySign.Status = KeyStatus(tv.Value[1])
+					keyDecrypt.Reference = KeyRef(tv.Value[2])
+					keyDecrypt.Status = KeyStatus(tv.Value[3])
+					keyAuthn.Reference = KeyRef(tv.Value[4])
+					keyAuthn.Status = KeyStatus(tv.Value[5])
+
+					if len(tv.Value) >= 8 {
+						keyAttest.Reference = KeyRef(tv.Value[6])
+						keyAttest.Status = KeyStatus(tv.Value[7])
 					}
 
 				default:
@@ -420,6 +340,12 @@ func (ar *ApplicationRelated) Decode(b []byte) (err error) {
 						slog.Any("tag", tv.Tag),
 						slog.String("value", hex.EncodeToString(tv.Value)))
 				}
+			}
+
+			ar.Keys = map[KeyRef]KeyInfo{
+				KeySign:    keySign,
+				KeyDecrypt: keyDecrypt,
+				KeyAuthn:   keyAuthn,
 			}
 
 		default:
@@ -598,7 +524,7 @@ func (gf *GeneralFeatures) Decode(b []byte) error {
 	return nil
 }
 
-type ApplicationIdentifier struct {
+type AID struct {
 	RID          iso.RID
 	Application  byte
 	Version      iso.Version
@@ -606,7 +532,7 @@ type ApplicationIdentifier struct {
 	Manufacturer Manufacturer
 }
 
-func (aid *ApplicationIdentifier) Decode(b []byte) error {
+func (aid *AID) Decode(b []byte) error {
 	if len(b) != 16 {
 		return ErrInvalidLength
 	}

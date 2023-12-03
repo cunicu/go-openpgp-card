@@ -12,18 +12,19 @@ import (
 
 var (
 
-	// errMismatchingAlgorithms is returned when a cryptographic operation
+	// ErrMismatchingAlgorithms is returned when a cryptographic operation
 	// is given keys using different algorithms.
-	errMismatchingAlgorithms = errors.New("mismatching key algorithms")
+	ErrMismatchingAlgorithms = errors.New("mismatching key algorithms")
 	ErrInvalidLength         = errors.New("invalid length")
 	errMissingTag            = errors.New("missing tag")
 	errOutOfMemory           = errors.New("out of memory (basic card)")
 	errSecurity              = errors.New("security related issue")
-	errUnsupported           = errors.New("unsupported")
-	errUnsupportedCurve      = fmt.Errorf("%w curve", errUnsupported)
+	ErrUnsupported           = errors.New("unsupported")
+	ErrUnsupportedKeyType    = fmt.Errorf("%w key attributes", ErrUnsupported)
+	ErrUnsupportedCurve      = fmt.Errorf("%w curve", ErrUnsupported)
 	errUnmarshal             = errors.New("failed to unmarshal")
 	errKeyNotPresent         = errors.New("key not present")
-	errAlgAttrsNotChangeable = errors.New("algorithm attributes are not changeable")
+	ErrAlgAttrsNotChangeable = errors.New("algorithm attributes are not changeable")
 	errChallengeTooLong      = fmt.Errorf("%w: challenge too long", ErrInvalidLength)
 )
 

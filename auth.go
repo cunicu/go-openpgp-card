@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	iso "cunicu.li/go-iso7816"
+	"cunicu.li/go-iso7816/encoding/tlv"
 )
 
 // VerifyPassword attempts to unlock a given password.
@@ -72,7 +73,7 @@ func (c *Card) ChangePassword(pwType byte, pwCurrent, pwNew string) error {
 		}
 
 	default:
-		return errUnsupported
+		return ErrUnsupported
 	}
 
 	_, err := send(c.tx, iso.InsChangeReferenceData, 0x00, pwType, []byte(pwCurrent+pwNew))
@@ -129,4 +130,39 @@ func (c *Card) ResetRetryCounterWithResettingCode(rc, newPw string) error {
 func (c *Card) SetRetryCounters(pw1, rc, pw3 byte) error {
 	_, err := send(c.tx, insSetPINRetries, 0, 0, []byte{pw1, rc, pw3})
 	return err
+}
+
+func (c *Card) SetUserInteractionMode(op SecurityOperation, mode UserInteractionMode, feat GeneralFeatures) error {
+	uif := UIF{mode, feat}
+	return c.putData(tagUIFSign+tlv.Tag(op), uif.Encode())
+}
+
+type PasswordMode struct {
+	RequirePW1ForEachSignature bool
+	UsePINBlockFormat2ForPW1   bool
+}
+
+func (c *Card) SetPasswordMode(mode PasswordMode) error {
+	sts, err := c.getData(tagPasswordStatus)
+	if err != nil {
+		return err
+	}
+
+	if mode.RequirePW1ForEachSignature {
+		sts[0] = 0
+	} else {
+		sts[0] = 1
+	}
+
+	if mode.UsePINBlockFormat2ForPW1 {
+		if c.Capabilities.Pin2BlockFormat == 0 {
+			return fmt.Errorf("PIN block 2 format is %w", ErrUnsupported)
+		}
+
+		sts[1] |= 0b1
+	} else {
+		sts[1] &= 0b1
+	}
+
+	return c.putData(tagPasswordStatus, sts)
 }

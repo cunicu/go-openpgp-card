@@ -18,7 +18,7 @@ import (
 )
 
 type Card struct {
-	card *iso.Card
+	*iso.Card
 
 	Rand  io.Reader
 	Clock func() time.Time
@@ -40,7 +40,7 @@ var (
 // NewCard creates a new OpenPGP card handle.
 func NewCard(sc *iso.Card) (c *Card, err error) {
 	c = &Card{
-		card: sc,
+		Card: sc,
 
 		Rand:  rand.Reader,
 		Clock: time.Now,
@@ -60,11 +60,11 @@ func NewCard(sc *iso.Card) (c *Card, err error) {
 
 	// Manufacturer specific quirks
 	if c.AID.Manufacturer == ManufacturerYubico {
-		if _, err := c.card.Select(iso.AidYubicoOTP); err != nil {
+		if _, err := c.Card.Select(iso.AidYubicoOTP); err != nil {
 			return nil, fmt.Errorf("failed to select applet: %w", err)
 		}
 
-		sts, err := yubikey.GetStatus(c.card)
+		sts, err := yubikey.GetStatus(c.Card)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get YubiKey status: %w", err)
 		}
@@ -230,11 +230,11 @@ func (c *Card) GetCardholderCertificates() ([][]byte, error) {
 	return c.getAllData(tagCerts)
 }
 
-func (c *Card) GetCardholderCertificate(slot Slot) ([]byte, error) {
-	order := []Slot{SlotAuthn, SlotDecrypt, SlotSign}
-	index := slices.Index(order, slot)
+func (c *Card) GetCardholderCertificate(key KeyRef) ([]byte, error) {
+	order := []KeyRef{KeyAuthn, KeyDecrypt, KeySign}
+	index := slices.Index(order, key)
 	if index < 0 {
-		return nil, errUnsupported
+		return nil, ErrUnsupported
 	}
 
 	return c.getDataIndex(tagCerts, index)
@@ -250,10 +250,8 @@ func (c *Card) GetSignatureCounter() (int, error) {
 
 func (c *Card) PrivateData(index int) ([]byte, error) {
 	if c.Capabilities.Flags&CapPrivateDO == 0 {
-		return nil, errUnsupported
-	}
-
-	if index < 0 || index > 3 {
+		return nil, ErrUnsupported
+	} else if index < 0 || index > 3 {
 		return nil, errInvalidIndex
 	}
 
@@ -270,7 +268,12 @@ func (c *Card) SetName(name string) error {
 }
 
 func (c *Card) SetLoginData(login string) error {
-	return c.putData(tagLoginData, []byte(login))
+	b := []byte(login)
+	if maxObjLen := int(c.Capabilities.MaxLenSpecialDO); len(b) > maxObjLen {
+		return fmt.Errorf("%w: max length is %d Bytes", ErrInvalidLength, maxObjLen)
+	}
+
+	return c.putData(tagLoginData, b)
 }
 
 func (c *Card) SetLanguage(lang string) error {
@@ -286,15 +289,21 @@ func (c *Card) SetSex(sex Sex) error {
 }
 
 func (c *Card) SetPublicKeyURL(url *url.URL) error {
-	return c.putData(tagPublicKeyURL, []byte(url.String()))
+	b := []byte(url.String())
+
+	if maxObjLen := int(c.Capabilities.MaxLenSpecialDO); len(b) > maxObjLen {
+		return fmt.Errorf("%w: max length is %d Bytes", ErrInvalidLength, maxObjLen)
+	}
+
+	return c.putData(tagPublicKeyURL, b)
 }
 
 func (c *Card) SetPrivateData(index int, b []byte) error {
 	if c.Capabilities.Flags&CapPrivateDO == 0 {
-		return errUnsupported
-	}
-
-	if index < 0 || index > 3 {
+		return ErrUnsupported
+	} else if maxObjLen := int(c.Capabilities.MaxLenSpecialDO); len(b) > maxObjLen {
+		return fmt.Errorf("%w: max length is %d Bytes", ErrInvalidLength, maxObjLen)
+	} else if index < 0 || index > 3 {
 		return errInvalidIndex
 	}
 
@@ -307,7 +316,7 @@ func (c *Card) SetPrivateData(index int, b []byte) error {
 // See: OpenPGP Smart Card Application - Section 7.2.15 GET CHALLENGE
 func (c *Card) Challenge(cnt int) ([]byte, error) {
 	if c.Capabilities.Flags&CapGetChallenge == 0 {
-		return nil, errUnsupported
+		return nil, ErrUnsupported
 	} else if cnt > int(c.Capabilities.MaxLenChallenge) {
 		return nil, errChallengeTooLong
 	}
@@ -326,7 +335,7 @@ func (c *Card) Challenge(cnt int) ([]byte, error) {
 func (c *Card) FactoryReset() error {
 	switch LifeCycleStatus(c.HistoricalBytes.LifeCycleStatus) {
 	case LifeCycleStatusNoInfo:
-		return errUnsupported
+		return ErrUnsupported
 
 	case LifeCycleStatusInitialized:
 
@@ -351,22 +360,22 @@ func (c *Card) FactoryReset() error {
 }
 
 // See: OpenPGP Smart Card Application - Section 7.2.18 MANAGE SECURITY ENVIRONMENT
-func (c *Card) ManageSecurityEnvironment(op SecurityOperation, slot Slot) error {
+func (c *Card) ManageSecurityEnvironment(op SecurityOperation, key KeyRef) error {
 	if c.Capabilities.CommandMSE == 0 {
-		return errUnsupported
+		return ErrUnsupported
 	}
 
-	var p2 byte
+	var opRef KeyRef
 	switch op {
 	case SecurityOperationDecrypt:
-		p2 = 0xb8
+		opRef = KeyDecrypt
 	case SecurityOperationAuthenticate:
-		p2 = 0xa4
+		opRef = KeyAuthn
 	default:
-		return fmt.Errorf("%w: security operation", errUnsupported)
+		return fmt.Errorf("%w: security operation", ErrUnsupported)
 	}
 
-	_, err := send(c.tx, iso.InsManageSecurityEnvironment, 0x41, p2, slot.crt())
+	_, err := sendTLV(c.tx, iso.InsManageSecurityEnvironment, 0x41, byte(opRef.tag()), key.crt())
 	return err
 }
 
@@ -456,11 +465,17 @@ func (c *Card) putData(t tlv.Tag, data []byte) error {
 	return err
 }
 
+// See: OpenPGP Smart Card Application - Section 7.2.8 PUT DATA
+func (c *Card) putDataTLV(tv tlv.TagValue) error {
+	_, err := sendTLV(c.tx, iso.InsPutDataOdd, 0x3f, 0xff, tv)
+	return err
+}
+
 // See: OpenPGP Smart Card Application - Section 7.2.17 ACTIVATE FILE
 func (c *Card) activate() error {
 	switch LifeCycleStatus(c.HistoricalBytes.LifeCycleStatus) {
 	case LifeCycleStatusNoInfo:
-		return errUnsupported
+		return ErrUnsupported
 
 	case LifeCycleStatusOperational:
 		return errAlreadyInitialized
@@ -475,7 +490,7 @@ func (c *Card) activate() error {
 // See: OpenPGP Smart Card Application - Section 7.2.16 TERMINATE DF
 func (c *Card) terminate() error {
 	if c.HistoricalBytes.LifeCycleStatus == byte(LifeCycleStatusNoInfo) {
-		return errUnsupported
+		return ErrUnsupported
 	}
 
 	for {
@@ -525,7 +540,7 @@ func send(tx *iso.Transaction, ins iso.Instruction, p1, p2 byte, data []byte) ([
 	return sendNe(tx, ins, p1, p2, data, 0)
 }
 
-//nolint:unused
+//nolint:unparam
 func sendTLV(tx *iso.Transaction, ins iso.Instruction, p1, p2 byte, value tlv.TagValue) ([]byte, error) {
 	data, err := tlv.EncodeBER(value)
 	if err != nil {
@@ -533,14 +548,4 @@ func sendTLV(tx *iso.Transaction, ins iso.Instruction, p1, p2 byte, value tlv.Ta
 	}
 
 	return send(tx, ins, p1, p2, data)
-}
-
-//nolint:unused
-func sendTLVNe(tx *iso.Transaction, ins iso.Instruction, p1, p2 byte, value tlv.TagValue, ne int) ([]byte, error) {
-	data, err := tlv.EncodeBER(value)
-	if err != nil {
-		return nil, err
-	}
-
-	return sendNe(tx, ins, p1, p2, data, ne)
 }
