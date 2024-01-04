@@ -5,7 +5,7 @@ module cunicu.li/go-openpgp-card
 
 go 1.21.5
 
-require cunicu.li/go-iso7816 v0.4.0
+require cunicu.li/go-iso7816 v0.5.1
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // test-only
