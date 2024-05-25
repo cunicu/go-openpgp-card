@@ -23,6 +23,7 @@
               clang
               golangci-lint
               reuse
+              go
             ]
             ++ lib.optionals pkgs.stdenv.isLinux [
               pcsclite
