@@ -10,17 +10,17 @@ import (
 	iso "cunicu.li/go-iso7816"
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 func TestVerifyPassword(t *testing.T) {
 	for pwType, pw := range map[byte]string{
-		pgp.PW1: pgp.DefaultPW1,
-		pgp.PW3: pgp.DefaultPW3,
+		opc.PW1: opc.DefaultPW1,
+		opc.PW3: opc.DefaultPW3,
 	} {
 		testName := fmt.Sprintf("pw%d", pwType-0x80)
 		t.Run(testName, func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
 				err := c.VerifyPassword(pwType, "wrong")
@@ -37,40 +37,40 @@ func TestVerifyPassword(t *testing.T) {
 }
 
 func TestChangePassword(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
-		err := c.ChangePassword(pgp.PW1, pgp.DefaultPW1, "hallo")
-		require.ErrorIs(err, pgp.ErrInvalidLength)
+		err := c.ChangePassword(opc.PW1, opc.DefaultPW1, "hallo")
+		require.ErrorIs(err, opc.ErrInvalidLength)
 
-		err = c.ChangePassword(pgp.PW1, "wrong", "hallohallo")
+		err = c.ChangePassword(opc.PW1, "wrong", "hallohallo")
 		require.ErrorIs(err, iso.ErrSecurityStatusNotSatisfied)
 
-		err = c.ChangePassword(pgp.PW1, pgp.DefaultPW1, "hallohallo")
+		err = c.ChangePassword(opc.PW1, opc.DefaultPW1, "hallohallo")
 		require.NoError(err)
 
-		err = c.VerifyPassword(pgp.PW1, "hallohallo")
+		err = c.VerifyPassword(opc.PW1, "hallohallo")
 		require.NoError(err)
 	})
 }
 
 func TestResetRetryCounter(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		require.Equal(byte(3), c.PasswordStatus.AttemptsPW1, "Initial attempts are not as expected")
 
-		err := c.VerifyPassword(pgp.PW1, "some wrong password")
+		err := c.VerifyPassword(opc.PW1, "some wrong password")
 		require.ErrorIs(err, iso.ErrSecurityStatusNotSatisfied)
 
 		sts, err := c.GetPasswordStatus()
 		require.NoError(err)
 		require.Equal(byte(2), sts.AttemptsPW1)
 
-		err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 
-		err = c.ResetRetryCounter(pgp.DefaultPW1)
+		err = c.ResetRetryCounter(opc.DefaultPW1)
 		require.NoError(err)
 
 		sts, err = c.GetPasswordStatus()
@@ -80,7 +80,7 @@ func TestResetRetryCounter(t *testing.T) {
 }
 
 func TestResetRetryCounterWithResettingCode(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		err := c.ChangeResettingCode("my reset code")
@@ -88,14 +88,14 @@ func TestResetRetryCounterWithResettingCode(t *testing.T) {
 
 		require.Equal(byte(3), c.PasswordStatus.AttemptsPW1, "Initial attempts are not as expected")
 
-		err = c.VerifyPassword(pgp.PW1, "some wrong password")
+		err = c.VerifyPassword(opc.PW1, "some wrong password")
 		require.ErrorIs(err, iso.ErrSecurityStatusNotSatisfied)
 
 		sts, err := c.GetPasswordStatus()
 		require.NoError(err)
 		require.Equal(byte(2), sts.AttemptsPW1)
 
-		err = c.ResetRetryCounterWithResettingCode("my reset code", pgp.DefaultPW1)
+		err = c.ResetRetryCounterWithResettingCode("my reset code", opc.DefaultPW1)
 		require.NoError(err)
 
 		sts, err = c.GetPasswordStatus()
@@ -105,12 +105,12 @@ func TestResetRetryCounterWithResettingCode(t *testing.T) {
 }
 
 func TestSetRetryCounters(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		require.Equal(byte(3), c.PasswordStatus.AttemptsPW1, "Initial attempts are not as expected")
 
-		err := c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err := c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 
 		err = c.SetRetryCounters(11, 12, 13)
@@ -133,7 +133,7 @@ func TestSetRetryCounters(t *testing.T) {
 
 		// Try if the new counters are in effect
 		for i := 0; i < 5; i++ {
-			err = c.VerifyPassword(pgp.PW1, "some wrong password")
+			err = c.VerifyPassword(opc.PW1, "some wrong password")
 			require.ErrorIs(err, iso.ErrSecurityStatusNotSatisfied)
 		}
 
