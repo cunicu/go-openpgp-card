@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	"cunicu.li/go-iso7816/test"
+	"cunicu.li/go-iso7816/drivers/pcsc"
 	"github.com/stretchr/testify/require"
 
 	pgp "cunicu.li/go-openpgp-card"
@@ -52,7 +52,7 @@ func testImportKeyRSA(t *testing.T) {
 			withCard(t, true, func(t *testing.T, c *pgp.Card) {
 				require := require.New(t)
 
-				if test.PCSCCard(c.Card) == nil {
+				if _, ok := c.Base().(*pcsc.Card); !ok {
 					t.Skip("RSA key generation is not deterministic. Mocked tests are broken")
 				}
 
