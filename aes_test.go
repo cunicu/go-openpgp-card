@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 //nolint:gochecknoglobals
@@ -20,10 +20,10 @@ var (
 )
 
 func TestBlockCipher(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
-		if c.Capabilities.Flags&pgp.CapAES == 0 {
+		if c.Capabilities.Flags&opc.CapAES == 0 {
 			t.Skip("Card does not support AES")
 		}
 

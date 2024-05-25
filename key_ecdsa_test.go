@@ -11,30 +11,30 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 //nolint:gochecknoglobals
-var ecdsaCurves = []pgp.Curve{
-	pgp.CurveANSIx9p256r1,
-	pgp.CurveANSIx9p384r1,
-	pgp.CurveANSIx9p521r1,
+var ecdsaCurves = []opc.Curve{
+	opc.CurveANSIx9p256r1,
+	opc.CurveANSIx9p384r1,
+	opc.CurveANSIx9p521r1,
 }
 
 func testGenerateKeyECDSA(t *testing.T) {
 	for _, curve := range ecdsaCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
-				sk, err := c.GenerateKey(pgp.KeySign, pgp.EC(curve))
-				if errors.Is(err, pgp.ErrUnsupportedKeyType) {
+				sk, err := c.GenerateKey(opc.KeySign, opc.EC(curve))
+				if errors.Is(err, opc.ErrUnsupportedKeyType) {
 					t.Skip(err)
 				}
 
 				require.NoError((err))
 
-				skECDSA, ok := sk.(*pgp.PrivateKeyECDSA)
+				skECDSA, ok := sk.(*opc.PrivateKeyECDSA)
 				require.True(ok)
 
 				pkECDSA, ok := skECDSA.Public().(*ecdsa.PublicKey)
@@ -42,10 +42,10 @@ func testGenerateKeyECDSA(t *testing.T) {
 
 				require.Equal(curve.ECDSA(), pkECDSA.Curve)
 
-				ki := c.Keys[pgp.KeySign]
-				require.Equal(pgp.KeySign, ki.Reference)
-				require.Equal(pgp.KeyGenerated, ki.Status)
-				require.Equal(pgp.AlgPubkeyECDSA, ki.AlgAttrs.Algorithm)
+				ki := c.Keys[opc.KeySign]
+				require.Equal(opc.KeySign, ki.Reference)
+				require.Equal(opc.KeyGenerated, ki.Status)
+				require.Equal(opc.AlgPubkeyECDSA, ki.AlgAttrs.Algorithm)
 				require.Equal(curve.OID(), ki.AlgAttrs.OID)
 			})
 		})
@@ -55,20 +55,20 @@ func testGenerateKeyECDSA(t *testing.T) {
 func testImportKeyECDSA(t *testing.T) {
 	for _, curve := range ecdsaCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
 				skImport, err := ecdsa.GenerateKey(curve.ECDSA(), c.Rand)
 				require.NoError(err)
 
-				sk, err := c.ImportKey(pgp.KeySign, skImport)
-				if errors.Is(err, pgp.ErrUnsupportedKeyType) {
+				sk, err := c.ImportKey(opc.KeySign, skImport)
+				if errors.Is(err, opc.ErrUnsupportedKeyType) {
 					t.Skip(err)
 				}
 
 				require.NoError(err)
 
-				skECDSA, ok := sk.(*pgp.PrivateKeyECDSA)
+				skECDSA, ok := sk.(*opc.PrivateKeyECDSA)
 				require.True(ok)
 
 				pkECDSA, ok := skECDSA.Public().(*ecdsa.PublicKey)
@@ -76,10 +76,10 @@ func testImportKeyECDSA(t *testing.T) {
 
 				require.Equal(curve.ECDSA(), pkECDSA.Curve)
 
-				ki := c.Keys[pgp.KeySign]
-				require.Equal(pgp.KeySign, ki.Reference)
-				require.Equal(pgp.KeyImported, ki.Status)
-				require.Equal(pgp.AlgPubkeyECDSA, ki.AlgAttrs.Algorithm)
+				ki := c.Keys[opc.KeySign]
+				require.Equal(opc.KeySign, ki.Reference)
+				require.Equal(opc.KeyImported, ki.Status)
+				require.Equal(opc.AlgPubkeyECDSA, ki.AlgAttrs.Algorithm)
 				require.Equal(curve.OID(), ki.AlgAttrs.OID)
 			})
 		})
@@ -89,13 +89,13 @@ func testImportKeyECDSA(t *testing.T) {
 func testSignECDSA(t *testing.T) {
 	for _, curve := range ecdsaCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
-				skAlice, err := c.GenerateKey(pgp.KeySign, pgp.EC(curve))
+				skAlice, err := c.GenerateKey(opc.KeySign, opc.EC(curve))
 				require.NoError(err)
 
-				skECDSA, ok := skAlice.(*pgp.PrivateKeyECDSA)
+				skECDSA, ok := skAlice.(*opc.PrivateKeyECDSA)
 				require.True(ok)
 
 				pk := skECDSA.Public()
@@ -107,7 +107,7 @@ func testSignECDSA(t *testing.T) {
 				_, err = c.Rand.Read(data)
 				require.NoError(err)
 
-				err = c.VerifyPassword(pgp.PW1, pgp.DefaultPW1)
+				err = c.VerifyPassword(opc.PW1, opc.DefaultPW1)
 				require.NoError(err)
 
 				for _, ht := range []crypto.Hash{crypto.SHA256, crypto.SHA384, crypto.SHA512} {
@@ -118,7 +118,7 @@ func testSignECDSA(t *testing.T) {
 					digest := h.Sum(nil)
 
 					_, err = skECDSA.Sign(nil, digest[:len(digest)-1], nil)
-					require.ErrorIs(err, pgp.ErrInvalidLength)
+					require.ErrorIs(err, opc.ErrInvalidLength)
 
 					ds, err := skECDSA.Sign(nil, digest, nil)
 					require.NoError(err)

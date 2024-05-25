@@ -15,14 +15,14 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 func TestFactoryReset(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
-		err := c.ChangePassword(pgp.PW3, pgp.DefaultPW3, "somepass")
+		err := c.ChangePassword(opc.PW3, opc.DefaultPW3, "somepass")
 		require.NoError(err)
 
 		t.Log("Password changed")
@@ -30,13 +30,13 @@ func TestFactoryReset(t *testing.T) {
 		err = c.FactoryReset()
 		require.NoError(err)
 
-		err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 	})
 }
 
 func TestFactoryResetWithDefaultPW(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		err := c.FactoryReset()
@@ -45,7 +45,7 @@ func TestFactoryResetWithDefaultPW(t *testing.T) {
 }
 
 func TestCardHolder(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		// Initial cardholder infos are empty after reset
@@ -53,18 +53,18 @@ func TestCardHolder(t *testing.T) {
 		require.NoError(err)
 		require.Empty(ch.Name)
 		require.Empty(ch.Language)
-		require.Equal(ch.Sex, pgp.SexNotApplicable)
+		require.Equal(ch.Sex, opc.SexNotApplicable)
 
 		t.Log(spew.Sdump(ch))
 
 		// Authenticate before changing cardholder data
-		err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 
-		err = c.SetCardholder(pgp.Cardholder{
+		err = c.SetCardholder(opc.Cardholder{
 			Name:     "Steffen Vogel",
 			Language: "de",
-			Sex:      pgp.SexMale,
+			Sex:      opc.SexMale,
 		})
 		require.NoError(err)
 
@@ -72,14 +72,14 @@ func TestCardHolder(t *testing.T) {
 		require.NoError(err)
 		require.Equal(ch.Name, "Steffen Vogel")
 		require.Equal(ch.Language, "de")
-		require.Equal(ch.Sex, pgp.SexMale)
+		require.Equal(ch.Sex, opc.SexMale)
 
 		t.Log(spew.Sdump(ch))
 	})
 }
 
 func TestLoginData(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		login, err := c.GetLoginData()
@@ -87,7 +87,7 @@ func TestLoginData(t *testing.T) {
 		require.Empty(login)
 
 		// Authenticate before changing cardholder data
-		err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 
 		err = c.SetLoginData("stv0g")
@@ -100,7 +100,7 @@ func TestLoginData(t *testing.T) {
 }
 
 func TestPublicKeyURL(t *testing.T) {
-	withCard(t, true, func(t *testing.T, c *pgp.Card) {
+	withCard(t, true, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		someURL, err := url.Parse("http://example.com/my_key.asc")
@@ -111,7 +111,7 @@ func TestPublicKeyURL(t *testing.T) {
 		require.Nil(pkURL)
 
 		// Authenticate before changing cardholder data
-		err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+		err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 		require.NoError(err)
 
 		err = c.SetPublicKeyURL(someURL)
@@ -126,15 +126,15 @@ func TestPublicKeyURL(t *testing.T) {
 func TestPrivateData(t *testing.T) {
 	for index := 0; index < 4; index++ {
 		t.Run(fmt.Sprint(index), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				var err error
 				require := require.New(t)
 
 				switch index {
 				case 0, 2:
-					err = c.VerifyPassword(pgp.RC, pgp.DefaultPW1)
+					err = c.VerifyPassword(opc.RC, opc.DefaultPW1)
 				case 1, 3:
-					err = c.VerifyPassword(pgp.PW3, pgp.DefaultPW3)
+					err = c.VerifyPassword(opc.PW3, opc.DefaultPW3)
 				}
 				require.NoError(err)
 
@@ -150,7 +150,7 @@ func TestPrivateData(t *testing.T) {
 }
 
 func TestApplicationRelated(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		ar, err := c.GetApplicationRelatedData()
@@ -161,7 +161,7 @@ func TestApplicationRelated(t *testing.T) {
 }
 
 func TestSecuritySupportTemplate(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		sst, err := c.GetSecuritySupportTemplate()
@@ -172,7 +172,7 @@ func TestSecuritySupportTemplate(t *testing.T) {
 }
 
 func TestChallenge(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		require.Less(uint16(16), c.Capabilities.MaxLenChallenge)
@@ -196,7 +196,7 @@ func TestChallenge(t *testing.T) {
 }
 
 func TestSignatureCounter(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		// TODO: Generate some signature to test incrementation
@@ -208,7 +208,7 @@ func TestSignatureCounter(t *testing.T) {
 }
 
 func TestCardholderCertificates(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		chCerts, err := c.GetCardholderCertificates()
@@ -219,9 +219,9 @@ func TestCardholderCertificates(t *testing.T) {
 }
 
 func TestCardholderCertificate(t *testing.T) {
-	for _, key := range []pgp.KeyRef{pgp.KeyAuthn, pgp.KeyDecrypt, pgp.KeySign} {
+	for _, key := range []opc.KeyRef{opc.KeyAuthn, opc.KeyDecrypt, opc.KeySign} {
 		t.Run(key.String(), func(t *testing.T) {
-			withCard(t, false, func(t *testing.T, c *pgp.Card) {
+			withCard(t, false, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
 				chCert, err := c.GetCardholderCertificate(key)
@@ -248,11 +248,11 @@ func (r *constReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func withCard(t *testing.T, reset bool, cb func(*testing.T, *pgp.Card)) {
+func withCard(t *testing.T, reset bool, cb func(*testing.T, *opc.Card)) {
 	test.WithCard(t, filter.HasApplet(iso.AidOpenPGP), func(t *testing.T, card *iso.Card) {
 		require := require.New(t)
 
-		pgpCard, err := pgp.NewCard(card)
+		pgpCard, err := opc.NewCard(card)
 		require.NoError(err)
 
 		pgpCard.Clock = func() time.Time {

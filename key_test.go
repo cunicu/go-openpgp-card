@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 func TestGenerateKey(t *testing.T) {
@@ -31,7 +31,7 @@ func TestSign(t *testing.T) {
 }
 
 func TestSupportedAlgorithms(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
 		asByKey, err := c.SupportedAlgorithms()
@@ -46,10 +46,10 @@ func TestSupportedAlgorithms(t *testing.T) {
 }
 
 func TestAlgorithmAttributes(t *testing.T) {
-	withCard(t, false, func(t *testing.T, c *pgp.Card) {
+	withCard(t, false, func(t *testing.T, c *opc.Card) {
 		require := require.New(t)
 
-		attrs, err := c.AlgorithmAttributes(pgp.KeySign)
+		attrs, err := c.AlgorithmAttributes(opc.KeySign)
 		require.NoError(err)
 
 		t.Log(attrs)

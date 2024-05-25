@@ -10,31 +10,31 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pgp "cunicu.li/go-openpgp-card"
+	opc "cunicu.li/go-openpgp-card"
 )
 
 //nolint:gochecknoglobals
-var ecdhCurves = []pgp.Curve{
-	pgp.CurveANSIx9p256r1,
-	pgp.CurveANSIx9p384r1,
-	pgp.CurveANSIx9p521r1,
-	pgp.CurveX25519,
+var ecdhCurves = []opc.Curve{
+	opc.CurveANSIx9p256r1,
+	opc.CurveANSIx9p384r1,
+	opc.CurveANSIx9p521r1,
+	opc.CurveX25519,
 }
 
 func testGenerateKeyECDH(t *testing.T) {
 	for _, curve := range ecdhCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
-				sk, err := c.GenerateKey(pgp.KeyDecrypt, pgp.EC(curve))
-				if errors.Is(err, pgp.ErrUnsupportedKeyType) {
+				sk, err := c.GenerateKey(opc.KeyDecrypt, opc.EC(curve))
+				if errors.Is(err, opc.ErrUnsupportedKeyType) {
 					t.Skip(err)
 				}
 
 				require.NoError((err))
 
-				skECDH, ok := sk.(*pgp.PrivateKeyECDH)
+				skECDH, ok := sk.(*opc.PrivateKeyECDH)
 				require.True(ok)
 
 				pkECDH, ok := skECDH.Public().(*ecdh.PublicKey)
@@ -42,14 +42,14 @@ func testGenerateKeyECDH(t *testing.T) {
 
 				require.Equal(curve.ECDH(), pkECDH.Curve())
 
-				ki := c.Keys[pgp.KeyDecrypt]
-				require.Equal(pgp.KeyDecrypt, ki.Reference)
-				require.Equal(pgp.KeyGenerated, ki.Status)
+				ki := c.Keys[opc.KeyDecrypt]
+				require.Equal(opc.KeyDecrypt, ki.Reference)
+				require.Equal(opc.KeyGenerated, ki.Status)
 				require.Equal(curve.OID(), ki.AlgAttrs.OID)
-				if curve == pgp.CurveX25519 {
-					require.Equal(pgp.AlgPubkeyEdDSA, ki.AlgAttrs.Algorithm)
+				if curve == opc.CurveX25519 {
+					require.Equal(opc.AlgPubkeyEdDSA, ki.AlgAttrs.Algorithm)
 				} else {
-					require.Equal(pgp.AlgPubkeyECDH, ki.AlgAttrs.Algorithm)
+					require.Equal(opc.AlgPubkeyECDH, ki.AlgAttrs.Algorithm)
 				}
 			})
 		})
@@ -59,20 +59,20 @@ func testGenerateKeyECDH(t *testing.T) {
 func testImportKeyECDH(t *testing.T) {
 	for _, curve := range ecdhCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
 				skImport, err := curve.ECDH().GenerateKey(c.Rand)
 				require.NoError(err)
 
-				sk, err := c.ImportKey(pgp.KeyDecrypt, skImport)
-				if errors.Is(err, pgp.ErrUnsupportedKeyType) {
+				sk, err := c.ImportKey(opc.KeyDecrypt, skImport)
+				if errors.Is(err, opc.ErrUnsupportedKeyType) {
 					t.Skip(err)
 				}
 
 				require.NoError(err)
 
-				skECDH, ok := sk.(*pgp.PrivateKeyECDH)
+				skECDH, ok := sk.(*opc.PrivateKeyECDH)
 				require.True(ok)
 
 				pkECDH, ok := skECDH.Public().(*ecdh.PublicKey)
@@ -80,14 +80,14 @@ func testImportKeyECDH(t *testing.T) {
 
 				require.Equal(curve.ECDH(), pkECDH.Curve())
 
-				ki := c.Keys[pgp.KeyDecrypt]
-				require.Equal(pgp.KeyDecrypt, ki.Reference)
-				require.Equal(pgp.KeyImported, ki.Status)
+				ki := c.Keys[opc.KeyDecrypt]
+				require.Equal(opc.KeyDecrypt, ki.Reference)
+				require.Equal(opc.KeyImported, ki.Status)
 				require.Equal(curve.OID(), ki.AlgAttrs.OID)
-				if curve == pgp.CurveX25519 {
-					require.Equal(pgp.AlgPubkeyEdDSA, ki.AlgAttrs.Algorithm)
+				if curve == opc.CurveX25519 {
+					require.Equal(opc.AlgPubkeyEdDSA, ki.AlgAttrs.Algorithm)
 				} else {
-					require.Equal(pgp.AlgPubkeyECDH, ki.AlgAttrs.Algorithm)
+					require.Equal(opc.AlgPubkeyECDH, ki.AlgAttrs.Algorithm)
 				}
 			})
 		})
@@ -97,13 +97,13 @@ func testImportKeyECDH(t *testing.T) {
 func TestSharedKeyECDH(t *testing.T) {
 	for _, curve := range ecdhCurves {
 		t.Run(curve.String(), func(t *testing.T) {
-			withCard(t, true, func(t *testing.T, c *pgp.Card) {
+			withCard(t, true, func(t *testing.T, c *opc.Card) {
 				require := require.New(t)
 
-				skAlice, err := c.GenerateKey(pgp.KeyDecrypt, pgp.EC(curve))
+				skAlice, err := c.GenerateKey(opc.KeyDecrypt, opc.EC(curve))
 				require.NoError(err)
 
-				skAliceECDH, ok := skAlice.(*pgp.PrivateKeyECDH)
+				skAliceECDH, ok := skAlice.(*opc.PrivateKeyECDH)
 				require.True(ok)
 
 				pkAlice := skAliceECDH.Public()
@@ -120,7 +120,7 @@ func TestSharedKeyECDH(t *testing.T) {
 				ss1, err := skBobECDH.ECDH(pkAliceECDH)
 				require.NoError(err)
 
-				err = c.VerifyPassword(pgp.PW1forPSO, pgp.DefaultPW1)
+				err = c.VerifyPassword(opc.PW1forPSO, opc.DefaultPW1)
 				require.NoError(err)
 
 				ss2, err := skAliceECDH.ECDH(pkBobECDH)
