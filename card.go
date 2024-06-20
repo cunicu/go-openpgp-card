@@ -118,7 +118,7 @@ func (c *Card) getAll() error {
 //
 // See: OpenPGP Smart Card Application - Section 7.2.1 SELECT
 func (c *Card) Select() error {
-	_, err := send(c.tx, iso.InsSelect, 0x04, 0x00, iso.AidOpenPGP)
+	_, err := c.tx.Select(iso.AidOpenPGP)
 	return err
 }
 
