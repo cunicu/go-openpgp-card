@@ -249,29 +249,29 @@ func (r *constReader) Read(p []byte) (int, error) {
 }
 
 func withCard(t *testing.T, reset bool, cb func(*testing.T, *opc.Card)) {
-	test.WithCard(t, filter.HasApplet(iso.AidOpenPGP), func(t *testing.T, card *iso.Card) {
+	test.WithCard(t, filter.HasApplet(iso.AidOpenPGP), func(t *testing.T, c *iso.Card) {
 		require := require.New(t)
 
-		pgpCard, err := opc.NewCard(card)
+		pc, err := opc.NewCard(c)
 		require.NoError(err)
 
-		pgpCard.Clock = func() time.Time {
+		pc.Clock = func() time.Time {
 			return time.Unix(1701041348, 0)
 		}
 
-		pgpCard.Rand = &constReader{}
+		pc.Rand = &constReader{}
 
 		if reset {
-			err = pgpCard.FactoryReset()
+			err = pc.FactoryReset()
 			require.NoError(err)
 		}
 
-		cb(t, pgpCard)
+		cb(t, pc)
 
-		err = pgpCard.Close()
+		err = pc.Close()
 		require.NoError(err)
 
-		err = card.Close()
+		err = c.Close()
 		require.NoError(err)
 	})
 }

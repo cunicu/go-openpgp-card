@@ -64,7 +64,8 @@ func NewCard(sc *iso.Card) (c *Card, err error) {
 			return nil, fmt.Errorf("failed to select applet: %w", err)
 		}
 
-		sts, err := yubikey.GetStatus(c.Card)
+		yc := yubikey.NewCard(c)
+		sts, err := yc.Status()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get YubiKey status: %w", err)
 		}
