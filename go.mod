@@ -9,7 +9,7 @@ require cunicu.li/go-iso7816 v0.8.0
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // test-only
-	github.com/stretchr/testify v1.9.0 // test-only
+	github.com/stretchr/testify v1.10.0 // test-only
 	gopkg.in/yaml.v3 v3.0.1 // indirect; test-only
 )
 
