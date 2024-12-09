@@ -150,7 +150,17 @@ func (c *Card) ImportKey(key KeyRef, skImport crypto.PrivateKey) (crypto.Private
 		return nil, ErrUnsupportedKeyType
 	}
 
-	if err := c.putDataTLV(tlv.New(tagExtendedHeaderList, key.crt(), cpkt, cpk)); err != nil {
+	// We are encoding the extended header list as a byte sequence here
+	// as its tag (0x4d) is a non-constructed BER-TLV tag.
+	// Note: this may be a mistake in the specification.
+	hdrData, err := tlv.EncodeBER(
+		key.crt(), cpkt, cpk,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := c.putDataTLV(tlv.New(tagExtendedHeaderList, hdrData)); err != nil {
 		return nil, fmt.Errorf("failed to import key: %w", err)
 	}
 
