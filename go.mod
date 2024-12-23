@@ -5,7 +5,7 @@ module cunicu.li/go-openpgp-card
 
 go 1.22.2
 
-require cunicu.li/go-iso7816 v0.8.3
+require cunicu.li/go-iso7816 v0.8.4
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // test-only
@@ -14,7 +14,7 @@ require (
 )
 
 require (
-	github.com/ebfe/scard v0.0.0-20230420082256-7db3f9b7c8a7 // indirect
+	github.com/ebfe/scard v0.0.0-20241214075232-7af069cabc25 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 )
