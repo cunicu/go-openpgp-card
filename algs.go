@@ -73,8 +73,8 @@ func (a AlgorithmAttributes) Encode() (b []byte) {
 
 	switch a.Algorithm {
 	case AlgPubkeyRSA:
-		b = binary.BigEndian.AppendUint16(b, uint16(a.LengthModulus))
-		b = binary.BigEndian.AppendUint16(b, uint16(a.LengthExponent))
+		b = binary.BigEndian.AppendUint16(b, uint16(a.LengthModulus))  //nolint:gosec
+		b = binary.BigEndian.AppendUint16(b, uint16(a.LengthExponent)) //nolint:gosec
 		b = append(b, byte(a.ImportFormat))
 
 	case AlgPubkeyECDH, AlgPubkeyECDSA, AlgPubkeyEdDSA:

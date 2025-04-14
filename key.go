@@ -68,7 +68,7 @@ func (c *Card) ImportKey(key KeyRef, skImport crypto.PrivateKey) (crypto.Private
 	switch skImport := skImport.(type) {
 	case *rsa.PrivateKey:
 		if attrs.ImportFormat == ImportFormatRSAStd || attrs.ImportFormat == ImportFormatRSACRT {
-			appendInt(0x91, (attrs.LengthExponent+7)/8, skImport.PublicKey.E) // Public exponent: e
+			appendInt(0x91, (attrs.LengthExponent+7)/8, skImport.E)           // Public exponent: e
 			appendBigInt(0x92, attrs.LengthModulus/(2*8), skImport.Primes[0]) // Prime1: p
 			appendBigInt(0x93, attrs.LengthModulus/(2*8), skImport.Primes[1]) // Prime2: q
 		}
@@ -192,7 +192,7 @@ func (c *Card) updateKeyMetadata(key KeyRef, sk privateKey) error {
 	generationTime := c.Clock()
 
 	ts := make([]byte, 4)
-	binary.BigEndian.PutUint32(ts, uint32(generationTime.Unix()))
+	binary.BigEndian.PutUint32(ts, uint32(generationTime.Unix())) //nolint:gosec
 
 	if err := c.putData(key.tagGenTime(), ts); err != nil {
 		return fmt.Errorf("failed to store key generation time: %w", err)

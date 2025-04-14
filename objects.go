@@ -105,7 +105,7 @@ func (k *KDF) Encode() ([]byte, error) {
 	case AlgKDFIterSaltedS2K:
 		parts = append(parts,
 			tlv.New(0x82, byte(k.HashAlgorithm)),
-			tlv.New(0x83, uint32(k.Iterations)),
+			tlv.New(0x83, uint32(k.Iterations)), //nolint:gosec
 			tlv.New(0x84, k.SaltPW1[:]),
 			tlv.New(0x85, k.SaltRC[:]),
 			tlv.New(0x86, k.SaltPW3[:]),

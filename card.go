@@ -246,7 +246,7 @@ func (c *Card) GetSignatureCounter() (int, error) {
 		return 0, err
 	}
 
-	return c.SecuritySupportTemplate.SignatureCounter, nil
+	return c.SignatureCounter, nil
 }
 
 func (c *Card) PrivateData(index int) ([]byte, error) {
