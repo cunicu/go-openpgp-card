@@ -21,7 +21,7 @@ func appendBytesMPI(b, o []byte) []byte {
 
 	var l uint16
 	if len(o) > 0 {
-		l = 8*uint16(len(o)-1) + uint16(bits.Len8(o[0]))
+		l = 8*uint16(len(o)-1) + uint16(bits.Len8(o[0])) //nolint:gosec
 	}
 
 	b = append(b, byte(l>>8), byte(l))

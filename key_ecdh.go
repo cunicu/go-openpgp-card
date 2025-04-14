@@ -62,8 +62,8 @@ func (k PrivateKeyECDH) fingerprint(creationTime time.Time) []byte {
 	buf = appendBytesMPI(buf, k.public.Bytes())
 	buf = appendKDF(buf, AlgHashSHA512, AlgSymAES256) // same default values as Sequoia
 
-	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))          // Fill in packet length
-	binary.BigEndian.PutUint32(buf[4:], uint32(creationTime.Unix())) // Fill in generation timestamp
+	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))          //nolint:gosec // Fill in packet length
+	binary.BigEndian.PutUint32(buf[4:], uint32(creationTime.Unix())) //nolint:gosec // Fill in generation timestamp
 
 	digest := sha1.New() //nolint:gosec
 	digest.Write(buf)

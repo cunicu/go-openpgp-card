@@ -65,8 +65,8 @@ func (k PrivateKeyRSA) fingerprint(creationTime time.Time) []byte {
 	buf = appendMPI(buf, k.public.N)
 	buf = appendMPI(buf, big.NewInt(int64(k.public.E)))
 
-	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))          // Fill in packet length
-	binary.BigEndian.PutUint32(buf[4:], uint32(creationTime.Unix())) // Fill in creation timestamp
+	binary.BigEndian.PutUint16(buf[1:], uint16(len(buf)-3))          //nolint:gosec // Fill in packet length
+	binary.BigEndian.PutUint32(buf[4:], uint32(creationTime.Unix())) //nolint:gosec // Fill in creation timestamp
 
 	digest := sha1.New() // nolint:gosec
 	digest.Write(buf)
